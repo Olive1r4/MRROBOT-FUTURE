@@ -292,23 +292,23 @@ class BinanceWebSocketScanner:
             atr = TechnicalIndicators.calculate_atr(candles)
             
             # Calcular distância das bandas
-            bb_distance = (current_price - bb_lower[-1]) / bb_lower[-1] * 100
+            bb_distance = (current_price - bb_lower) / bb_lower * 100
             
             # Volume médio (últimas 20 velas)
             avg_volume = sum(volumes[-20:]) / 20
             current_volume = volumes[-1]
             volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1
             
-            logger.debug(f"📊 {symbol} | ${current_price:.2f} | RSI: {rsi[-1]:.1f} | BB: {bb_distance:.2f}% | Vol: {volume_ratio:.2f}x")
+            logger.debug(f"📊 {symbol} | ${current_price:.2f} | RSI: {rsi:.1f} | BB: {bb_distance:.2f}% | Vol: {volume_ratio:.2f}x")
             
             # DETECTAR SINAL DE COMPRA
             signal_detected = self.detect_buy_signal(
                 symbol=symbol,
                 current_price=current_price,
-                rsi=rsi[-1],
-                bb_lower=bb_lower[-1],
+                rsi=rsi,
+                bb_lower=bb_lower,
                 bb_distance=bb_distance,
-                ema_200=ema_200[-1],
+                ema_200=ema_200,
                 volume_ratio=volume_ratio
             )
             
