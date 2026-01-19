@@ -245,10 +245,11 @@ class Database:
             response = self.client.table('daily_pnl')\
                 .select('*')\
                 .eq('trade_date', trade_date.isoformat())\
-                .maybeSingle()\
+                .limit(1)\
                 .execute()
             
-            return response.data if response.data else None
+            # Retornar primeiro item ou None
+            return response.data[0] if response.data and len(response.data) > 0 else None
         except Exception as e:
             # Se não existe registro para hoje, retornar None
             if "No rows found" in str(e) or "Could not find" in str(e):
