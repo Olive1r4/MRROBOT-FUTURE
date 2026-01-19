@@ -30,23 +30,24 @@ jobs:
       
       - name: 🚀 Deploy via SSH
         run: |
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} bash << ENDSSH
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} bash -s "${{ secrets.VPS_PATH }}" << 'ENDSSH'
             set -e
+            
+            VPS_PATH="$1"
             
             echo "============================================"
             echo "🤖 INICIANDO DEPLOY DO BOT DE SCALPING"
             echo "============================================"
-            
-            VPS_PATH="${{ secrets.VPS_PATH }}"
+            echo "📂 Diretório alvo: $VPS_PATH"
             
             # Verificar se o diretório existe
-            if [ ! -d "\$VPS_PATH" ]; then
+            if [ ! -d "$VPS_PATH" ]; then
               echo "📁 Criando diretório do projeto..."
-              mkdir -p "\$VPS_PATH"
+              mkdir -p "$VPS_PATH"
             fi
             
             # Navegar para o diretório do projeto
-            cd "\$VPS_PATH"
+            cd "$VPS_PATH"
             
             # Verificar se é um repositório Git
             if [ ! -d .git ]; then
