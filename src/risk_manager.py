@@ -292,7 +292,7 @@ class RiskManager:
     async def calculate_position_size(self, symbol: str, current_price: float, 
                                      coin_config: Optional[Dict] = None) -> Tuple[float, float]:
         """
-        Calcula o tamanho da posição com base na configuração e no risco
+        Calcula o tamanho da posição baseado em 20% do capital disponível
         
         Args:
             symbol: Símbolo da moeda
@@ -303,24 +303,24 @@ class RiskManager:
             (usdt_amount, leverage)
         """
         try:
-            # Obter configuração da moeda se não fornecida
-            if not coin_config:
-                coin_config = await self.db.get_coin_config(symbol)
+            # ALAVANCAGEM FORÇADA = 5x
+            leverage = self.config.DEFAULT_LEVERAGE
             
-            # Usar valores da configuração ou padrões
-            max_position_size = float(coin_config.get('max_position_size', self.config.DEFAULT_POSITION_SIZE))
-            leverage = int(coin_config.get('leverage', self.config.DEFAULT_LEVERAGE))
+            # TODO: Obter saldo real do exchange
+            # Por enquanto, usar valor estimado
+            total_capital = 10000.0  # Substituir por self.exchange.get_balance('USDT')
             
-            # TODO: Implementar cálculo dinâmico baseado em:
-            # - Volatilidade (ATR)
-            # - Saldo disponível
-            # - Número de trades abertos
-            # - Performance recente
+            # POSITION SIZING: 20% do capital
+            usdt_amount = total_capital * self.config.POSITION_SIZE_PERCENT
             
-            logger.info(f"💰 Tamanho da posição: ${max_position_size:.2f} com {leverage}x leverage")
+            logger.info(f"💰 Position Sizing ({symbol}):")
+            logger.info(f"   Capital Total: ${total_capital:.2f}")
+            logger.info(f"   Posição: ${usdt_amount:.2f} ({self.config.POSITION_SIZE_PERCENT * 100:.0f}%)")
+            logger.info(f"   Alavancagem: {leverage}x (FORÇADA)")
             
-            return max_position_size, leverage
+            return usdt_amount, leverage
         
         except Exception as e:
             logger.error(f"❌ Erro ao calcular tamanho da posição: {str(e)}")
+            # Fallback
             return self.config.DEFAULT_POSITION_SIZE, self.config.DEFAULT_LEVERAGE

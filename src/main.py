@@ -86,11 +86,16 @@ async def startup_event():
         await telegram.notify_startup(config)
         logger.info("✅ Notificação de startup enviada")
         
-        # Iniciar scanner de mercado em background
+        # Iniciar MARKET SCANNER em background (detecta entradas tick-by-tick)
         if config.ENABLE_SCANNER:
-            from src.scanner import start_scanner
-            asyncio.create_task(start_scanner(config, exchange, risk_manager, db))
-            logger.info("🔍 Scanner de mercado iniciado em background")
+            from src.market_scanner import start_market_scanner
+            asyncio.create_task(start_market_scanner(config, exchange, risk_manager, db, telegram))
+            logger.info("🔍 Market Scanner iniciado (Entrada Tempo Real)")
+        
+        # Iniciar TRADE MONITOR em background (monitora saídas tick-by-tick)
+        from src.trade_monitor import start_trade_monitor
+        asyncio.create_task(start_trade_monitor(config, exchange, db, telegram, risk_manager))
+        logger.info("🔭 Trade Monitor iniciado (Saída Tempo Real)")
     except Exception as e:
         logger.error(f"⚠️ Erro ao enviar notificação de startup: {e}")
 

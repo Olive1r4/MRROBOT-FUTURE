@@ -41,50 +41,55 @@ class Config(BaseSettings):
     # ============================================
     # CONFIGURAÇÕES DE TRADING
     # ============================================
-    TARGET_PROFIT: float = Field(default=0.006, description="Lucro alvo (0.6%)")
-    TRADING_FEE: float = Field(default=0.0004, description="Taxa de trading (0.04%)")
+    TARGET_PROFIT: float = Field(default=0.006, description="Lucro alvo BRUTO (0.6%)")
+    TRADING_FEE: float = Field(default=0.0004, description="Taxa de trading (0.04% por ordem)")
     
-    # STOP LOSS POR TRADE (CRÍTICO!)
-    # Risk:Reward deve ser próximo de 1:1 ou 1:1.5
-    # Com target de 0.6%, stop deve ser 0.6-0.9%
-    STOP_LOSS_PERCENTAGE: float = Field(default=0.008, description="Stop loss por trade (0.8%)")
-    MAX_LOSS_PER_TRADE: float = Field(default=0.009, description="Perda máxima por trade (0.9%)")
+    # LUCRO LÍQUIDO = TARGET_PROFIT + (TRADING_FEE * 2)
+    # Para 0.6% líquido: TARGET_PROFIT_NET = 0.006 + 0.0008 = 0.0068 (0.68%)
+    TARGET_PROFIT_NET: float = Field(default=0.0068, description="Lucro alvo LÍQUIDO após fees (0.68%)")
     
-    # ALAVANCAGEM (conservadora para scalping)
-    # Iniciantes: 3x-5x | Avançados: até 10x
-    DEFAULT_LEVERAGE: int = Field(default=5, description="Alavancagem padrão (5x moderado)")
-    MAX_LEVERAGE: int = Field(default=10, description="Alavancagem máxima permitida")
+    # STOP LOSS POR TRADE (FIXO)
+    # Risk:Reward = 0.8:0.6 = 1:0.75 (aceitável para scalping de alta frequência)
+    STOP_LOSS_PERCENTAGE: float = Field(default=0.008, description="Stop loss FIXO por trade (0.8%)")
+    MAX_LOSS_PER_TRADE: float = Field(default=0.008, description="Perda máxima por trade (0.8%)")
+    USE_ATR_STOP: bool = Field(default=False, description="DESABILITADO: Usar stop loss fixo")
     
-    DEFAULT_POSITION_SIZE: float = Field(default=100.00, description="Tamanho padrão da posição em USDT")
+    # ALAVANCAGEM (FORÇADA para scalping)
+    DEFAULT_LEVERAGE: int = Field(default=5, description="Alavancagem FORÇADA (5x)")
+    MAX_LEVERAGE: int = Field(default=5, description="Alavancagem máxima (5x)")
+    
+    # POSITION SIZING (20% do capital por operação)
+    POSITION_SIZE_PERCENT: float = Field(default=0.20, description="Percentual do capital por trade (20%)")
+    DEFAULT_POSITION_SIZE: float = Field(default=100.00, description="Tamanho padrão (será calculado dinamicamente)")
     
     # ============================================
-    # INDICADORES TÉCNICOS (OTIMIZADOS PARA 1 MINUTO)
+    # INDICADORES TÉCNICOS (SCALPING DE ALTA PRECISÃO)
     # ============================================
-    RSI_PERIOD: int = Field(default=10, description="Período do RSI (reduzido para 1min)")
-    RSI_OVERSOLD: float = Field(default=25, description="Nível de sobrevenda do RSI (mais conservador)")
+    # Setup Técnico Timeframe 1M:
+    # - RSI(7): Mais responsivo para detectar oversold rápido
+    # - BB(20, 2.5): Bandas mais largas (2.5 std) para evitar falsos sinais
+    # - EMA(200): Filtro de tendência de longo prazo
+    
+    RSI_PERIOD: int = Field(default=7, description="Período do RSI (ultra responsivo)")
+    RSI_OVERSOLD: float = Field(default=25, description="RSI < 25 = oversold extremo")
     RSI_OVERBOUGHT: float = Field(default=75, description="Nível de sobrecompra do RSI")
     
-    BB_PERIOD: int = Field(default=15, description="Período das Bandas de Bollinger (mais dinâmico)")
-    BB_STD_DEV: float = Field(default=2.0, description="Desvio padrão das Bollinger")
+    BB_PERIOD: int = Field(default=20, description="Período das Bandas de Bollinger")
+    BB_STD_DEV: float = Field(default=2.5, description="Desvio padrão 2.5 (bandas mais largas)")
     
-    EMA_PERIOD: int = Field(default=100, description="Período da EMA (ajustado para 1min)")
+    EMA_PERIOD: int = Field(default=200, description="EMA 200 para filtro de tendência")
     
-    ATR_PERIOD: int = Field(default=10, description="Período do ATR (mais responsivo)")
-    # ATR usado para stop loss dinâmico baseado em volatilidade
-    # Objetivo: stop entre 0.3-0.9% do preço de entrada
-    ATR_MULTIPLIER: float = Field(default=1.5, description="Multiplicador do ATR para stop loss dinâmico")
-    USE_ATR_STOP: bool = Field(default=True, description="Usar ATR para calcular stop loss (recomendado)")
-    USE_FIXED_STOP: bool = Field(default=False, description="Usar stop loss fixo de STOP_LOSS_PERCENTAGE")
+    ATR_PERIOD: int = Field(default=14, description="Período do ATR (não usado para stop)")
     
-    TIMEFRAME: str = Field(default="1m", description="Timeframe para análise (SCALPING)")
+    TIMEFRAME: str = Field(default="1m", description="Timeframe 1 MINUTO (scalping)")
     
     # ============================================
-    # GUARDRAILS DE SEGURANÇA (REFORÇADOS PARA 1 MINUTO)
+    # GUARDRAILS DE SEGURANÇA (SCALPING DE ALTA FREQUÊNCIA)
     # ============================================
-    DAILY_STOP_LOSS: float = Field(default=0.05, description="Stop loss diário (5%)")
-    MAX_OPEN_TRADES: int = Field(default=1, description="Máximo de trades abertos (1 para evitar overtrading)")
-    TRADE_COOLDOWN_SECONDS: int = Field(default=180, description="Cooldown entre trades (3min)")
-    MAX_ORDERS_PER_MINUTE: int = Field(default=3, description="Rate limit de ordens (mais conservador)")
+    DAILY_STOP_LOSS: float = Field(default=0.03, description="Circuit breaker diário (-3%)")
+    MAX_OPEN_TRADES: int = Field(default=1, description="Máximo 1 trade aberto (evitar overtrading)")
+    TRADE_COOLDOWN_SECONDS: int = Field(default=900, description="Cooldown 15 minutos (900s)")
+    MAX_ORDERS_PER_MINUTE: int = Field(default=10, description="Rate limit 10 ordens/min")
     
     # ============================================
     # SCANNER DE MERCADO

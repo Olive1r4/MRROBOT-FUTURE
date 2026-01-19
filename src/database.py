@@ -158,7 +158,7 @@ class Database:
             await self.update_trade(trade_id, update_data)
             
             # Atualizar PnL diário
-            await self.update_daily_pnl(pnl_net, pnl_net > 0)
+            await self.update_daily_pnl(datetime.now().date(), pnl_net)
             
             logger.info(f"✅ Trade {trade_id} fechado")
             logger.info(f"   Entry: ${entry_price:.4f} | Exit: ${exit_price:.4f}")
@@ -197,6 +197,31 @@ class Database:
             logger.error(f"❌ Erro ao obter trade {trade_id}: {str(e)}")
             return None
     
+    async def update_trade_exit(self, trade_id: str, exit_price: float, exit_reason: str, pnl_percent: float, pnl_usdt: float):
+        """
+        Atualiza um trade com dados de saída
+        Usado pelo TradeMonitor
+        """
+        try:
+            update_data = {
+                'exit_price': exit_price,
+                'exit_time': datetime.now().isoformat(),
+                'exit_reason': exit_reason,
+                'pnl': pnl_usdt,
+                'pnl_percentage': pnl_percent * 100,  # Converter para percentual
+                'status': 'closed'
+            }
+            
+            self.client.table('trades_history')\
+                .update(update_data)\
+                .eq('id', trade_id)\
+                .execute()
+            
+            logger.info(f"✅ Trade {trade_id} atualizado com saída")
+        except Exception as e:
+            logger.error(f"❌ Erro ao atualizar saída do trade {trade_id}: {str(e)}")
+            raise
+    
     async def get_trades_by_symbol(self, symbol: str, status: str = None) -> List[Dict]:
         """Obtém trades de um símbolo específico"""
         try:
@@ -211,6 +236,26 @@ class Database:
         except Exception as e:
             logger.error(f"❌ Erro ao obter trades de {symbol}: {str(e)}")
             return []
+    
+    async def save_trade_history(self, trade_data: Dict) -> str:
+        """
+        Salva um novo trade (usado pelo Market Scanner)
+        Retorna o ID do trade criado
+        """
+        try:
+            response = self.client.table('trades_history')\
+                .insert(trade_data)\
+                .execute()
+            
+            if response.data and len(response.data) > 0:
+                trade_id = response.data[0]['id']
+                logger.info(f"✅ Trade salvo: {trade_id}")
+                return str(trade_id)
+            
+            return None
+        except Exception as e:
+            logger.error(f"❌ Erro ao salvar trade: {str(e)}")
+            raise
     
     # ============================================
     # BOT LOGS
@@ -257,17 +302,17 @@ class Database:
             logger.error(f"❌ Erro ao obter PnL diário: {str(e)}")
             return None
     
-    async def update_daily_pnl(self, pnl: float, is_win: bool):
-        """Atualiza o PnL diário"""
+    async def update_daily_pnl(self, trade_date: date, pnl_usdt: float):
+        """Atualiza o PnL diário (usado pelo TradeMonitor)"""
         try:
-            today = datetime.now().date()
-            daily_pnl = await self.get_daily_pnl(today)
+            is_win = pnl_usdt > 0
+            daily_pnl = await self.get_daily_pnl(trade_date)
             
             if not daily_pnl:
                 # Criar novo registro
                 data = {
-                    'trade_date': today.isoformat(),
-                    'total_pnl': pnl,
+                    'trade_date': trade_date.isoformat(),
+                    'total_pnl': pnl_usdt,
                     'total_trades': 1,
                     'winning_trades': 1 if is_win else 0,
                     'losing_trades': 0 if is_win else 1,
@@ -277,7 +322,7 @@ class Database:
             else:
                 # Atualizar registro existente
                 data = {
-                    'total_pnl': float(daily_pnl['total_pnl']) + pnl,
+                    'total_pnl': float(daily_pnl['total_pnl']) + pnl_usdt,
                     'total_trades': int(daily_pnl['total_trades']) + 1,
                     'winning_trades': int(daily_pnl['winning_trades']) + (1 if is_win else 0),
                     'losing_trades': int(daily_pnl['losing_trades']) + (0 if is_win else 1),
@@ -285,10 +330,10 @@ class Database:
                 
                 self.client.table('daily_pnl')\
                     .update(data)\
-                    .eq('trade_date', today.isoformat())\
+                    .eq('trade_date', trade_date.isoformat())\
                     .execute()
             
-            logger.info(f"✅ PnL diário atualizado: {'+' if pnl > 0 else ''}{pnl:.2f}")
+            logger.info(f"✅ PnL diário atualizado: {'+' if pnl_usdt > 0 else ''}{pnl_usdt:.2f}")
         except Exception as e:
             logger.error(f"❌ Erro ao atualizar PnL diário: {str(e)}")
     
@@ -392,3 +437,20 @@ class Database:
         except Exception as e:
             logger.error(f"❌ Erro ao obter estatísticas: {str(e)}")
             return {}
+
+    # ============================================
+    # HELPERS
+    # ============================================
+    
+    async def get_active_symbols(self) -> List[Dict]:
+        """Obtém lista de símbolos ativos (usado pelo scanner)"""
+        try:
+            response = self.client.table('coins_config')\
+                .select('symbol')\
+                .eq('is_active', True)\
+                .execute()
+            
+            return response.data if response.data else []
+        except Exception as e:
+            logger.error(f"❌ Erro ao obter símbolos ativos: {str(e)}")
+            return []
