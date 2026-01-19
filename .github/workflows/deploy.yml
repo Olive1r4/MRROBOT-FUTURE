@@ -1,0 +1,152 @@
+name: Deploy Bot de Scalping para VPS
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy para VPS via SSH
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout do código
+        uses: actions/checkout@v4
+      
+      - name: 🔐 Configurar chave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+      
+      - name: 🚀 Deploy via SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+        run: |
+          ssh $VPS_USER@$VPS_HOST << 'ENDSSH'
+            set -e
+            
+            echo "============================================"
+            echo "🤖 INICIANDO DEPLOY DO BOT DE SCALPING"
+            echo "============================================"
+            
+            # Navegar para o diretório do projeto
+            cd ${{ secrets.VPS_PATH }}
+            
+            # Parar o serviço se estiver rodando
+            echo "⏸️  Parando serviço..."
+            sudo systemctl stop scalping-bot || echo "Serviço não estava rodando"
+            
+            # Fazer backup do arquivo .env
+            if [ -f .env ]; then
+              echo "💾 Fazendo backup do .env..."
+              cp .env .env.backup
+            fi
+            
+            # Atualizar código do repositório
+            echo "📥 Atualizando código..."
+            git fetch origin
+            git reset --hard origin/main
+            
+            # Restaurar arquivo .env
+            if [ -f .env.backup ]; then
+              echo "♻️  Restaurando .env..."
+              mv .env.backup .env
+            fi
+            
+            # Ativar ambiente virtual
+            echo "🐍 Ativando ambiente virtual..."
+            source venv/bin/activate
+            
+            # Atualizar dependências
+            echo "📦 Instalando/atualizando dependências..."
+            pip install --upgrade pip
+            pip install -r requirements.txt
+            
+            # Criar diretório de logs se não existir
+            echo "📁 Criando diretório de logs..."
+            mkdir -p logs
+            
+            # Reiniciar serviço
+            echo "🔄 Reiniciando serviço..."
+            sudo systemctl start scalping-bot
+            
+            # Aguardar um momento
+            sleep 3
+            
+            # Verificar status
+            echo "✅ Verificando status do serviço..."
+            sudo systemctl status scalping-bot --no-pager
+            
+            echo "============================================"
+            echo "✅ DEPLOY CONCLUÍDO COM SUCESSO!"
+            echo "============================================"
+          ENDSSH
+      
+      - name: 📊 Verificar saúde da aplicação
+        run: |
+          sleep 5
+          curl -f http://${{ secrets.VPS_HOST }}:8000/health || echo "⚠️ Health check falhou"
+      
+      - name: 🔔 Notificar sucesso
+        if: success()
+        run: |
+          echo "✅ Deploy realizado com sucesso!"
+          echo "🌐 Aplicação disponível em: http://${{ secrets.VPS_HOST }}:8000"
+      
+      - name: ❌ Notificar falha
+        if: failure()
+        run: |
+          echo "❌ Deploy falhou! Verifique os logs acima."
+
+# ============================================
+# CONFIGURAÇÃO DOS SECRETS NO GITHUB
+# ============================================
+# 
+# Vá em: Settings > Secrets and variables > Actions > New repository secret
+# 
+# Adicione os seguintes secrets:
+# 
+# 1. VPS_SSH_KEY
+#    Conteúdo: Chave privada SSH (arquivo ~/.ssh/id_rsa do seu computador)
+#    Para gerar: ssh-keygen -t rsa -b 4096 -C "github-actions"
+#    Cole o conteúdo completo do arquivo, incluindo:
+#    -----BEGIN OPENSSH PRIVATE KEY-----
+#    ...
+#    -----END OPENSSH PRIVATE KEY-----
+# 
+# 2. VPS_HOST
+#    Exemplo: 192.168.1.100 ou seu.dominio.com
+# 
+# 3. VPS_USER
+#    Exemplo: ubuntu ou seu usuário da VPS
+# 
+# 4. VPS_PATH
+#    Exemplo: /home/ubuntu/MRROBOT-FUTURE
+# 
+# ============================================
+# CONFIGURAÇÃO DA VPS
+# ============================================
+# 
+# Na sua VPS, adicione a chave pública SSH do GitHub Actions:
+# 
+# 1. Copie a chave PÚBLICA (arquivo .pub gerado junto com a privada)
+# 
+# 2. Na VPS, execute:
+#    mkdir -p ~/.ssh
+#    echo "sua_chave_publica_aqui" >> ~/.ssh/authorized_keys
+#    chmod 700 ~/.ssh
+#    chmod 600 ~/.ssh/authorized_keys
+# 
+# 3. Configure o usuário para usar sudo sem senha (apenas para systemctl):
+#    sudo visudo
+#    Adicione a linha:
+#    ubuntu ALL=(ALL) NOPASSWD: /bin/systemctl start scalping-bot, /bin/systemctl stop scalping-bot, /bin/systemctl restart scalping-bot, /bin/systemctl status scalping-bot
+# 
+# ============================================

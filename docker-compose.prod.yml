@@ -1,0 +1,91 @@
+version: '3.8'
+
+# ============================================
+# DOCKER COMPOSE - PRODUÇÃO
+# ============================================
+# Este arquivo é otimizado para produção
+
+services:
+  scalping-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mrrobot-scalping:latest
+    container_name: mrrobot-scalping-bot-prod
+    restart: always
+    
+    env_file:
+      - .env
+    
+    ports:
+      - "${WEBHOOK_PORT:-8000}:8000"
+    
+    volumes:
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+    
+    # Recursos otimizados para produção
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    
+    # Health check mais rigoroso
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    
+    # Logging otimizado
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+        compress: "true"
+    
+    networks:
+      - scalping-network
+    
+    # Política de restart agressiva
+    stop_grace_period: 30s
+
+  # Serviço de monitoramento (opcional)
+  watchtower:
+    image: containrrr/watchtower
+    container_name: mrrobot-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=3600
+      - WATCHTOWER_INCLUDE_STOPPED=true
+    networks:
+      - scalping-network
+
+networks:
+  scalping-network:
+    driver: bridge
+
+# ============================================
+# USO EM PRODUÇÃO
+# ============================================
+#
+# Iniciar em produção:
+#   docker-compose -f docker-compose.prod.yml up -d
+#
+# Ver logs:
+#   docker-compose -f docker-compose.prod.yml logs -f scalping-bot
+#
+# Atualizar:
+#   git pull
+#   docker-compose -f docker-compose.prod.yml up -d --build
+#
+# ============================================
