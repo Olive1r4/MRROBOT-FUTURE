@@ -90,7 +90,7 @@ class Config(BaseSettings):
     # SCANNER DE MERCADO
     # ============================================
     ENABLE_SCANNER: bool = Field(default=True, description="Habilitar scanner automático de mercado")
-    SCANNER_CHECK_INTERVAL: int = Field(default=30, description="Intervalo entre verificações do scanner (segundos)")
+    SCANNER_CHECK_INTERVAL: int = Field(default=5, description="Intervalo entre análises (5s para não perder velas de 1min)")
     
     # ============================================
     # LOGGING

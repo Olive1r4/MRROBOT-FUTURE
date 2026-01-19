@@ -227,11 +227,14 @@ class BinanceWebSocketScanner:
             if is_closed:
                 # Vela fechou - adicionar ao cache
                 self.candles_cache[symbol].append(candle)
-                logger.debug(f"📊 {symbol}: Nova vela fechada @ ${candle[4]:.2f}")
+                logger.info(f"🕐 {symbol}: Nova vela de 1min fechada @ ${candle[4]:.2f} | Volume: {candle[5]:.0f}")
                 
                 # Analisar símbolo se já passou o intervalo de check
                 if self.should_check(symbol):
                     await self.analyze_symbol(symbol)
+                else:
+                    logger.info(f"⏳ {symbol}: Aguardando intervalo de análise ({self.config.SCANNER_CHECK_INTERVAL}s)")
+                    logger.info(f"")
             else:
                 # Vela ainda aberta - atualizar última vela do cache
                 if len(self.candles_cache[symbol]) > 0:
@@ -299,7 +302,18 @@ class BinanceWebSocketScanner:
             current_volume = volumes[-1]
             volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1
             
-            logger.debug(f"📊 {symbol} | ${current_price:.2f} | RSI: {rsi:.1f} | BB: {bb_distance:.2f}% | Vol: {volume_ratio:.2f}x")
+            # LOG DETALHADO DE ANÁLISE
+            logger.info(f"")
+            logger.info(f"{'='*60}")
+            logger.info(f"📊 ANÁLISE: {symbol} @ ${current_price:.2f}")
+            logger.info(f"{'='*60}")
+            logger.info(f"💹 INDICADORES:")
+            logger.info(f"   RSI: {rsi:.2f} {'✅ OVERSOLD' if rsi < self.config.RSI_OVERSOLD else '❌ Normal'} (limite: {self.config.RSI_OVERSOLD})")
+            logger.info(f"   BB Lower: ${bb_lower:.2f} {'✅ ABAIXO' if current_price < bb_lower else '❌ Acima'} (preço vs banda)")
+            logger.info(f"   BB Distance: {bb_distance:.2f}%")
+            logger.info(f"   EMA {self.config.EMA_PERIOD}: ${ema_200:.2f} {'✅ ACIMA' if current_price > ema_200 else '❌ Abaixo'} (tendência)")
+            logger.info(f"   ATR: {atr:.2f}")
+            logger.info(f"   Volume: {volume_ratio:.2f}x média {'✅ ALTO' if volume_ratio > 1.2 else '⚠️ Normal'}")
             
             # DETECTAR SINAL DE COMPRA
             signal_detected = self.detect_buy_signal(
@@ -316,7 +330,7 @@ class BinanceWebSocketScanner:
                 await self.execute_trade_from_signal(
                     symbol=symbol,
                     current_price=current_price,
-                    rsi=rsi[-1],
+                    rsi=rsi,
                     bb_distance=bb_distance,
                     volume_ratio=volume_ratio
                 )
@@ -368,6 +382,13 @@ class BinanceWebSocketScanner:
                 logger.info(f"   {status} {condition}")
             logger.info("=" * 60)
             return True
+        else:
+            # LOG: Por que NÃO entrou
+            logger.info(f"❌ SEM SINAL: {symbol} ({met_conditions}/{total_conditions} condições)")
+            for condition, met in conditions.items():
+                if not met:
+                    logger.info(f"   ❌ Faltou: {condition}")
+            logger.info(f"")
         
         return False
     
