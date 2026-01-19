@@ -41,8 +41,21 @@ jobs:
             echo "🤖 INICIANDO DEPLOY DO BOT DE SCALPING"
             echo "============================================"
             
+            # Verificar se o diretório existe
+            if [ ! -d "${{ secrets.VPS_PATH }}" ]; then
+              echo "📁 Criando diretório do projeto..."
+              mkdir -p ${{ secrets.VPS_PATH }}
+            fi
+            
             # Navegar para o diretório do projeto
             cd ${{ secrets.VPS_PATH }}
+            
+            # Verificar se é um repositório Git
+            if [ ! -d .git ]; then
+              echo "🔧 Inicializando repositório Git..."
+              git init
+              git remote add origin https://github.com/Olive1r4/MRROBOT-FUTURE.git
+            fi
             
             # Fazer backup do arquivo .env
             if [ -f .env ]; then
