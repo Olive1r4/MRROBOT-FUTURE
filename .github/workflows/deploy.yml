@@ -56,6 +56,10 @@ jobs:
               git remote add origin https://github.com/Olive1r4/MRROBOT-FUTURE.git
             fi
             
+            # Configurar safe.directory para evitar erro de ownership
+            echo "🔐 Configurando safe.directory..."
+            git config --global --add safe.directory "$VPS_PATH"
+            
             # Fazer backup do arquivo .env
             if [ -f .env ]; then
               echo "💾 Fazendo backup do .env..."
