@@ -133,8 +133,8 @@ class Database:
             quantity = float(trade['quantity'])
             leverage = int(trade.get('leverage', 1))
 
-            # PnL bruto
-            pnl_gross = (exit_price - entry_price) * quantity * leverage
+            # PnL bruto (quantity já contempla o valor nominal / alavancagem)
+            pnl_gross = (exit_price - entry_price) * quantity
 
             # Descontar taxas (entrada + saída)
             trading_fee = self.config.TRADING_FEE

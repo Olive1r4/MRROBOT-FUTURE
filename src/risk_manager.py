@@ -307,13 +307,16 @@ class RiskManager:
             # Por enquanto, usar valor estimado
             total_capital = 100.0  # Substituir por self.exchange.get_balance('USDT')
 
-            # POSITION SIZING: 20% do capital
-            usdt_amount = total_capital * self.config.POSITION_SIZE_PERCENT
+            # POSITION SIZING: 20% do capital como MARGEM
+            margin = total_capital * self.config.POSITION_SIZE_PERCENT
 
-            logger.info(f"💰 Position Sizing ({symbol}):")
+            # Valor Nominal (Notional) = Margem * Alavancagem
+            usdt_amount = margin * leverage
+
+            logger.info(f"💰 Position Sizing Sniper ({symbol}):")
             logger.info(f"   Capital Total: ${total_capital:.2f}")
-            logger.info(f"   Posição: ${usdt_amount:.2f} ({self.config.POSITION_SIZE_PERCENT * 100:.0f}%)")
-            logger.info(f"   Alavancagem: {leverage}x (FORÇADA)")
+            logger.info(f"   Margem Utilizada: ${margin:.2f} ({self.config.POSITION_SIZE_PERCENT * 100:.0f}%)")
+            logger.info(f"   Valor Nominal: ${usdt_amount:.2f} (com {leverage}x)")
 
             return usdt_amount, leverage
 

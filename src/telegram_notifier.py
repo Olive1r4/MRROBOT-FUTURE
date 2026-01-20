@@ -102,7 +102,8 @@ class TelegramNotifier:
         mode = trade_data.get('mode', 'MOCK')
 
         # Calcular valores
-        position_value = entry_price * quantity * leverage
+        # position_value já contempla a alavancagem via quantity
+        position_value = entry_price * quantity
         target_profit_pct = ((target_price - entry_price) / entry_price) * 100
         stop_loss_pct = ((stop_loss_price - entry_price) / entry_price) * 100
 
@@ -177,7 +178,8 @@ class TelegramNotifier:
                 pass
 
         # Calcular valores
-        position_value = entry_price * quantity * leverage
+        # position_value já contempla a alavancagem via quantity
+        position_value = entry_price * quantity
 
         message = f"""
 {result_emoji} <b>VENDA EXECUTADA - {result_text}</b>

@@ -51,9 +51,10 @@ class OpenTrade:
         # PnL LÍQUIDO (após fees)
         self.pnl_percent = pnl_percent_gross - total_fees
 
-        # PnL em USDT (considerando alavancagem)
+        # PnL em USDT
+        # position_value já contempla o tamanho total da posição
         position_value = self.quantity * self.entry_price
-        self.pnl_usdt = position_value * self.pnl_percent * self.leverage
+        self.pnl_usdt = position_value * self.pnl_percent
 
     def should_take_profit(self, target_profit_net: float) -> bool:
         """Verifica se atingiu o take profit (após fees)"""
