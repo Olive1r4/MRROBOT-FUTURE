@@ -321,7 +321,7 @@ class MarketScanner:
                 state.current_price = candle[4]
                 state.last_update = datetime.now()
 
-                logger.info(f"🕐 {symbol}: Vela fechada @ ${candle[4]:.2f}")
+                # logger.info(f"🕐 {symbol}: Vela fechada @ ${candle[4]:.2f}")
 
                 # RECALCULAR INDICADORES
                 await self.calculate_indicators(symbol)
@@ -358,10 +358,7 @@ class MarketScanner:
             state.volume_24h = volumes[-1]
             state.volume_ratio = state.volume_24h / state.volume_avg_20 if state.volume_avg_20 > 0 else 1
 
-            logger.info(f"📊 {symbol}: Indicadores atualizados")
-            logger.info(f"   RSI: {state.rsi:.2f}")
-            logger.info(f"   BB Lower: ${state.bb_lower:.2f}")
-            logger.info(f"   EMA 200: ${state.ema_200:.2f}")
+            logger.info(f"� {symbol}: Fechou @ ${state.current_price:.2f} | RSI: {state.rsi:.2f} | BB Low: ${state.bb_lower:.2f} | EMA: ${state.ema_200:.2f}")
 
         except Exception as e:
             logger.error(f"❌ Erro ao calcular indicadores de {symbol}: {e}")

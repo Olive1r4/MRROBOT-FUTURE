@@ -21,7 +21,7 @@ from src.telegram_notifier import TelegramNotifier
 # Configurar logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('logs/scalping_bot.log'),
         logging.StreamHandler()
