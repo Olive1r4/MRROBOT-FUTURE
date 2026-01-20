@@ -169,10 +169,7 @@ class MarketScanner:
 
             self.buffer_ready[symbol] = True
 
-            logger.info(f"✅ {symbol}: Buffer pronto ({len(ohlcv)} velas)")
-            logger.info(f"   RSI: {self.market_states[symbol].rsi:.2f}")
-            logger.info(f"   BB Lower: ${self.market_states[symbol].bb_lower:.2f}")
-            logger.info(f"   EMA 200: ${self.market_states[symbol].ema_200:.2f}")
+            logger.info(f"✅ {symbol}: Buffer pronto (200 velas) | RSI: {self.market_states[symbol].rsi:.2f} | BB Low: ${self.market_states[symbol].bb_lower:.2f} | EMA: ${self.market_states[symbol].ema_200:.2f}")
 
             return True
 
@@ -358,7 +355,8 @@ class MarketScanner:
             state.volume_24h = volumes[-1]
             state.volume_ratio = state.volume_24h / state.volume_avg_20 if state.volume_avg_20 > 0 else 1
 
-            logger.info(f"� {symbol}: Fechou @ ${state.current_price:.2f} | RSI: {state.rsi:.2f} | BB Low: ${state.bb_lower:.2f} | EMA: ${state.ema_200:.2f}")
+            # Use a standard clock emoji or simple text to avoid encoding issues
+            logger.info(f"🕐 {symbol}: Fechou @ ${state.current_price:.2f} | RSI: {state.rsi:.2f} | BB Low: ${state.bb_lower:.2f} | EMA: ${state.ema_200:.2f}")
 
         except Exception as e:
             logger.error(f"❌ Erro ao calcular indicadores de {symbol}: {e}")
