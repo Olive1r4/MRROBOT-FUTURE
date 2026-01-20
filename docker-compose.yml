@@ -50,17 +50,6 @@ services:
     networks:
       - scalping-network
 
-  dozzle:
-    container_name: mrrobot-logs-viewer
-    image: amir20/dozzle:latest
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    ports:
-      - "8888:8080"
-    restart: unless-stopped
-    networks:
-      - scalping-network
-
 # Rede isolada
 networks:
   scalping-network:
