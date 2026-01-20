@@ -420,6 +420,15 @@ class TradeMonitor:
                     self.last_log_time[trade.trade_id] = now
                     logger.info(f"📊 {symbol}: ${current_price:.4f} | PnL: {trade.pnl_percent * 100:+.3f}% (Target: ${trade.target_price:.4f})")
 
+                # VERIFICAR TIME-EXIT (45 minutos)
+                duration_minutes = (now - trade.entry_time).total_seconds() / 60
+                if duration_minutes >= 45:
+                    # Fechar se estiver próximo de zero (entre -0.1% e +0.1%)
+                    if abs(trade.pnl_percent) <= 0.001:
+                        logger.info(f"⏳ TIME-EXIT: {symbol} atingiu {duration_minutes:.1f} min com PnL neutro ({trade.pnl_percent*100:+.2f}%). Fechando...")
+                        await self.close_trade(trade, current_price, "TIME_EXIT")
+                        continue
+
                 # VERIFICAR TAKE PROFIT
                 if trade.should_take_profit(self.config.TARGET_PROFIT_NET):
                     logger.info(f"🎯 TAKE PROFIT: {symbol} | Entrada: ${trade.entry_price:.2f} -> Saída: ${current_price:.2f} | PnL: {trade.pnl_percent * 100:+.2f}% (ID: {trade.trade_id})")

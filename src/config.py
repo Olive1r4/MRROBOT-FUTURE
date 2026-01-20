@@ -87,7 +87,7 @@ class Config(BaseSettings):
     # GUARDRAILS DE SEGURANÇA (SCALPING DE ALTA FREQUÊNCIA)
     # ============================================
     DAILY_STOP_LOSS: float = Field(default=0.03, description="Circuit breaker diário (-3%)")
-    MAX_OPEN_TRADES: int = Field(default=1, description="Máximo 1 trade aberto (evitar overtrading)")
+    MAX_OPEN_TRADES: int = Field(default=2, description="Máximo 2 trades abertos (evitar overtrading)")
     TRADE_COOLDOWN_SECONDS: int = Field(default=900, description="Cooldown 15 minutos (900s)")
     MAX_ORDERS_PER_MINUTE: int = Field(default=10, description="Rate limit 10 ordens/min")
 

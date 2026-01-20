@@ -467,10 +467,12 @@ class MarketScanner:
                 logger.info(f"⏰ Cooldown de 60s ativado para {symbol}")
                 return
 
-            # Calcular TP e SL baseado nos indicadores atuais
-            atr = state.bb_upper - state.bb_lower  # Aproximação do ATR
-            stop_loss = entry_price - (atr * 0.8)  # SL: 0.8x ATR abaixo
-            take_profit = entry_price + (atr * 0.68)  # TP: 0.68x ATR acima (ratio 1:0.85)
+            # Calcular TP e SL baseado nos parâmetros globais (Fixos conforme solicitado)
+            # TP Líquido de 0.6% (+ taxas)
+            take_profit = entry_price * (1 + self.config.TARGET_PROFIT_NET)
+
+            # SL de 0.8%
+            stop_loss = entry_price * (1 - self.config.STOP_LOSS_PERCENTAGE)
 
             # Preparar indicadores para passar ao execute_trade
             scanner_indicators = {
