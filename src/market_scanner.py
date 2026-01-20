@@ -118,13 +118,12 @@ class MarketScanner:
     async def load_active_symbols(self):
         """Carrega símbolos ativos do banco"""
         try:
-            response = self.db.client.table('coins_config')\
-                .select('symbol')\
-                .eq('is_active', True)\
-                .execute()
+        try:
+            # Usar método centralizado do banco de dados
+            active_coins = await self.db.get_active_symbols()
 
-            if response.data:
-                self.active_symbols = [coin['symbol'] for coin in response.data]
+            if active_coins:
+                self.active_symbols = [coin['symbol'] for coin in active_coins]
                 logger.info(f"✅ {len(self.active_symbols)} símbolos ativos carregados")
             else:
                 logger.warning("⚠️ Nenhum símbolo ativo no banco")
