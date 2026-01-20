@@ -86,12 +86,18 @@ class MarketScanner:
         # Flag para shutdown
         self.is_running = True
         self.running_tasks: Set[str] = set()
+        self.subscribed_streams: Set[str] = set()
+        self.ws_main: Optional[websockets.WebSocketClientProtocol] = None
+        self.ws_lock = asyncio.Lock()
 
     async def start(self):
         """Inicia o scanner"""
         logger.info("=" * 60)
         logger.info("🚀 MARKET SCANNER START")
         logger.info("=" * 60)
+
+        # Task única para o monitor de WebSockets (Multi-Stream)
+        asyncio.create_task(self.monitor_multi_stream())
 
         # Task para atualizar símbolos dinamicamente
         asyncio.create_task(self.dynamic_symbol_refresher())
@@ -109,10 +115,11 @@ class MarketScanner:
                 for symbol in self.active_symbols:
                     if symbol not in self.running_tasks:
                         logger.info(f"🆕 Iniciando monitoramento dinâmico: {symbol}")
-                        self.running_tasks.add(symbol)
-                        # Iniciar tasks para o novo símbolo
-                        asyncio.create_task(self.monitor_kline(symbol))
-                        asyncio.create_task(self.monitor_miniticker(symbol))
+                        # Preencher buffer inicial
+                        if await self.fill_initial_buffer(symbol):
+                            self.running_tasks.add(symbol)
+                            # Assinar streams para este novo símbolo
+                            await self.subscribe_symbol(symbol)
 
             except Exception as e:
                 logger.error(f"❌ Erro no refresher dinâmico: {e}")
@@ -172,108 +179,113 @@ class MarketScanner:
             logger.error(f"❌ Erro ao preencher buffer de {symbol}: {e}")
             return False
 
-    async def monitor_kline(self, symbol: str):
+    async def monitor_multi_stream(self):
         """
-        WebSocket de KLINE (velas de 1min)
-        Atualiza indicadores a cada vela fechada
+        Mantém uma única conexão WebSocket Multi-Stream para todas as moedas.
+        Eficiente, economiza recursos e evita timeouts.
         """
-        # Preencher buffer inicial ANTES de conectar
-        if not await self.fill_initial_buffer(symbol):
-            logger.error(f"❌ Abortando monitoramento de {symbol}")
-            return
-
-        ws_symbol = symbol.lower()
-        self.reconnect_attempts[f"{symbol}_kline"] = 0
+        self.reconnect_attempts["multi_stream"] = 0
 
         while self.is_running:
             try:
-                ws_url = f"wss://fstream.binance.com/ws/{ws_symbol}@kline_{self.config.TIMEFRAME}"
+                # URL base para Multi-Stream no Binance Futures
+                base_url = "wss://fstream.binance.com/stream"
 
-                logger.info(f"🔌 Conectando Kline WebSocket: {symbol}...")
+                logger.info("🔌 Conectando WebSocket Multi-Stream Centralizado...")
 
                 async with websockets.connect(
-                    ws_url,
+                    base_url,
                     ping_interval=20,
                     ping_timeout=10,
                     close_timeout=5
                 ) as websocket:
 
-                    self.ws_kline[symbol] = websocket
-                    self.reconnect_attempts[f"{symbol}_kline"] = 0
+                    self.ws_main = websocket
+                    self.reconnect_attempts["multi_stream"] = 0
 
-                    logger.info(f"✅ Kline WebSocket conectado: {symbol}")
+                    # Se já temos símbolos (em caso de reconexão), assinar novamente
+                    if self.running_tasks:
+                        streams = []
+                        for s in self.running_tasks:
+                            s_low = s.lower()
+                            streams.append(f"{s_low}@kline_{self.config.TIMEFRAME}")
+                            streams.append(f"{s_low}@miniTicker")
 
-                    async for message in websocket:
-                        try:
-                            data = json.loads(message)
+                        if streams:
+                            subscribe_msg = {
+                                "method": "SUBSCRIBE",
+                                "params": streams,
+                                "id": int(datetime.now().timestamp())
+                            }
+                            await websocket.send(json.dumps(subscribe_msg))
+                            self.subscribed_streams.update(streams)
+                            logger.info(f"✅ Re-inscrito em {len(streams)} streams em massa")
 
-                            if 'k' in data:
-                                kline = data['k']
-
-                                # Processar vela
-                                await self.process_kline(symbol, kline)
-
-                        except Exception as e:
-                            logger.error(f"❌ Erro ao processar kline de {symbol}: {e}")
-
-            except websockets.exceptions.ConnectionClosed as e:
-                logger.warning(f"⚠️ Kline WebSocket fechou ({symbol}): {e}")
-                await self.handle_reconnection(f"{symbol}_kline")
-
-            except Exception as e:
-                logger.error(f"❌ Erro no Kline WebSocket ({symbol}): {e}")
-                await self.handle_reconnection(f"{symbol}_kline")
-
-    async def monitor_miniticker(self, symbol: str):
-        """
-        WebSocket de MINITICKER (preço em tempo real)
-        Verifica condições de ENTRADA a cada tick
-        """
-        # Aguardar buffer estar pronto
-        while not self.buffer_ready.get(symbol, False):
-            await asyncio.sleep(1)
-
-        ws_symbol = symbol.lower()
-        self.reconnect_attempts[f"{symbol}_ticker"] = 0
-
-        while self.is_running:
-            try:
-                ws_url = f"wss://fstream.binance.com/ws/{ws_symbol}@miniTicker"
-
-                logger.info(f"🔌 Conectando MiniTicker WebSocket: {symbol}...")
-
-                async with websockets.connect(
-                    ws_url,
-                    ping_interval=20,
-                    ping_timeout=10,
-                    close_timeout=5
-                ) as websocket:
-
-                    self.ws_miniticker[symbol] = websocket
-                    self.reconnect_attempts[f"{symbol}_ticker"] = 0
-
-                    logger.info(f"✅ MiniTicker WebSocket conectado: {symbol}")
+                    logger.info("✅ WebSocket Multi-Stream conectado e pronto")
 
                     async for message in websocket:
                         try:
                             data = json.loads(message)
 
-                            if 'c' in data:  # 'c' = close price
-                                current_price = float(data['c'])
+                            # Formato Multi-Stream: {"stream": "...", "data": {...}}
+                            if "stream" in data and "data" in data:
+                                stream_name = data["stream"]
+                                payload = data["data"]
 
-                                # Processar tick de ENTRADA
-                                await self.process_entry_tick(symbol, current_price)
+                                # Extrair símbolo do nome do stream (ex: btcusdt@kline_1m -> btcusdt)
+                                symbol_from_ws = stream_name.split('@')[0].upper()
+
+                                # Roteamento
+                                if "@kline" in stream_name:
+                                    if "k" in payload:
+                                        await self.process_kline(symbol_from_ws, payload["k"])
+                                elif "@miniTicker" in stream_name:
+                                    if "c" in payload:
+                                        await self.process_entry_tick(symbol_from_ws, float(payload["c"]))
+
+                            # Tratar respostas de confirmação do sistema
+                            elif "result" in data and data.get("id"):
+                                logger.debug(f"ℹ️ Confirmação WebSocket: {data}")
 
                         except Exception as e:
-                            logger.error(f"❌ Erro ao processar tick de {symbol}: {e}")
+                            logger.error(f"❌ Erro ao processar mensagem multi-stream: {e}")
 
             except websockets.exceptions.ConnectionClosed as e:
-                logger.warning(f"⚠️ MiniTicker WebSocket fechou ({symbol}): {e}")
-                await self.handle_reconnection(f"{symbol}_ticker")
-
+                logger.warning(f"⚠️ Conexão Multi-Stream fechada: {e}")
+                self.ws_main = None
+                await self.handle_reconnection("multi_stream")
             except Exception as e:
-                logger.error(f"❌ Erro no MiniTicker WebSocket ({symbol}): {e}")
-                await self.handle_reconnection(f"{symbol}_ticker")
+                logger.error(f"❌ Erro crítico no WebSocket Multi-Stream: {e}")
+                self.ws_main = None
+                await self.handle_reconnection("multi_stream")
+
+    async def subscribe_symbol(self, symbol: str):
+        """Assina os streams de um novo símbolo na conexão aberta"""
+        try:
+            s_low = symbol.lower()
+            new_streams = [
+                f"{s_low}@kline_{self.config.TIMEFRAME}",
+                f"{s_low}@miniTicker"
+            ]
+
+            # Verificar se já estamos conectados
+            async with self.ws_lock:
+                if self.ws_main and self.ws_main.open:
+                    subscribe_msg = {
+                        "method": "SUBSCRIBE",
+                        "params": new_streams,
+                        "id": int(datetime.now().timestamp())
+                    }
+                    await self.ws_main.send(json.dumps(subscribe_msg))
+                    self.subscribed_streams.update(new_streams)
+                    logger.info(f"📡 Inscrito em novos streams para {symbol}")
+                else:
+                    # Se não houver conexão, o loop monitor_multi_stream cuidará da assinatura
+                    # quando subir, pois o símbolo já estará em running_tasks
+                    logger.debug(f"⏳ Aguardando conexão para inscrever {symbol}")
+
+        except Exception as e:
+            logger.error(f"❌ Erro ao inscrever símbolo {symbol}: {e}")
 
     async def handle_reconnection(self, key: str):
         """Lógica de reconnection"""
@@ -497,9 +509,9 @@ class MarketScanner:
         logger.info("🛑 Encerrando MarketScanner...")
         self.is_running = False
 
-        for symbol, ws in {**self.ws_kline, **self.ws_miniticker}.items():
+        if self.ws_main:
             try:
-                await ws.close()
+                await self.ws_main.close()
             except:
                 pass
 

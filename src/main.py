@@ -18,6 +18,11 @@ from src.risk_manager import RiskManager
 from src.database import Database
 from src.telegram_notifier import TelegramNotifier
 
+# Garantir diretório de logs
+import os
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+
 # Configurar logging
 logging.basicConfig(
     level=logging.INFO,
@@ -239,8 +244,8 @@ async def execute_trade(
 
         logger.info(f"✅ TRADE EXECUTADO COM SUCESSO! ID: {trade_id}")
 
-        # 9. MONITORAR TRADE (em background)
-        asyncio.create_task(monitor_trade(trade_id))
+        # 9. O TRADE MONITOR (em background) irá detectar este novo trade
+        # automaticamente em até 5 segundos via banco de dados.
 
         return {
             'success': True,
@@ -267,85 +272,6 @@ async def execute_trade(
         }
 
 
-async def monitor_trade(trade_id: int):
-    """
-    Monitora um trade aberto e fecha quando atingir TP ou SL
-
-    Args:
-        trade_id: ID do trade a ser monitorado
-    """
-    try:
-        logger.info(f"👁️ Monitorando trade {trade_id}...")
-
-        while True:
-            # Aguardar intervalo (verifica a cada 5 segundos)
-            await asyncio.sleep(5)
-
-            # Obter dados do trade
-            trade = db.get_trade_by_id(trade_id)
-
-            if not trade or trade['status'] != 'open':
-                logger.info(f"✋ Trade {trade_id} não está mais aberto. Parando monitoramento.")
-                break
-
-            symbol = trade['symbol']
-            entry_price = float(trade['entry_price'])
-            quantity = float(trade['quantity'])
-            target_price = float(trade['target_price'])
-            stop_loss = float(trade['stop_loss_price'])
-
-            # Obter preço atual
-            current_price = exchange.get_current_price(symbol)
-
-            # Verificar condições de saída
-            should_exit, exit_reason = signal_analyzer.check_exit_conditions(
-                entry_price, current_price, stop_loss, target_price
-            )
-
-            if should_exit:
-                logger.info(f"🚪 Condição de saída atingida para trade {trade_id}")
-                logger.info(f"   Razão: {exit_reason}")
-
-                # Executar ordem de venda
-                order_exit = exchange.create_market_sell_order(symbol, quantity, current_price)
-
-                # Registrar no rate limiter
-                risk_manager.register_order()
-
-                # Fechar trade no banco
-                pnl, pnl_pct = db.close_trade(
-                    trade_id,
-                    current_price,
-                    exit_reason,
-                    order_exit.get('id')
-                )
-
-                # Definir cooldown
-                risk_manager.set_trade_cooldown(symbol)
-
-                logger.info(f"✅ Trade {trade_id} fechado")
-                logger.info(f"   PnL: ${pnl:.2f} ({pnl_pct:+.2f}%)")
-
-                db.log('INFO', f'Trade fechado: {symbol}', {
-                    'trade_id': trade_id,
-                    'exit_price': current_price,
-                    'pnl': pnl,
-                    'pnl_percentage': pnl_pct,
-                    'reason': exit_reason
-                }, symbol=symbol, trade_id=trade_id)
-
-                # Notificar fechamento via Telegram
-                await telegram.notify_trade_close(trade, current_price, pnl, pnl_pct)
-
-                break
-
-    except Exception as e:
-        logger.error(f"❌ Erro ao monitorar trade {trade_id}: {str(e)}", exc_info=True)
-
-        db.log('ERROR', f'Erro ao monitorar trade', {
-            'trade_id': trade_id,
-            'error': str(e)
-        }, trade_id=trade_id)
 
 
 # ============================================

@@ -85,18 +85,16 @@ class TradeMonitor:
         # Trades abertos sendo monitorados
         self.open_trades: Dict[str, OpenTrade] = {}
 
-        # WebSocket connections por símbolo
-        self.websockets: Dict[str, websockets.WebSocketClientProtocol] = {}
-
-        # Símbolos sendo monitorados
-        self.monitored_symbols: Set[str] = set()
-
-        # Reconnection attempts
-        self.reconnect_attempts: Dict[str, int] = {}
-        self.max_reconnect_attempts = 10
-
         # Flag para shutdown gracioso
         self.is_running = True
+
+        # Conexão WebSocket centralizada (Multi-Stream)
+        self.ws_main: Optional[websockets.WebSocketClientProtocol] = None
+        self.ws_lock = asyncio.Lock()
+        self.subscribed_streams: Set[str] = set()
+
+        # Task única para gerenciar o WebSocket
+        self.monitor_task: Optional[asyncio.Task] = None
 
         # Flag para shutdown gracioso
         self.is_running = True
@@ -109,6 +107,9 @@ class TradeMonitor:
 
         # Carregar trades abertos do banco ao iniciar
         await self.load_open_trades_from_db()
+
+        # Iniciar conexão WebSocket Multi-Stream em background
+        self.monitor_task = asyncio.create_task(self.monitor_multi_stream())
 
         # Loop principal de monitoramento
         while self.is_running:
@@ -193,133 +194,141 @@ class TradeMonitor:
 
     async def add_trade_to_monitor(self, trade: OpenTrade):
         """
-        Adiciona um trade à lista de monitoramento
-
-        CRITICAL:
-        - Adiciona trade ao dicionário
-        - Inicia WebSocket de MINITICKER para o símbolo (se ainda não existe)
-        - Começa a monitorar preço em TEMPO REAL
+        Adiciona um trade à lista de monitoramento e assina o stream no WebSocket
         """
         try:
             symbol = trade.symbol
-
-            # Adicionar trade ao dicionário
             self.open_trades[trade.trade_id] = trade
 
             logger.info(f"🔭 MONITORANDO: {symbol} (ID: {trade.trade_id}) | Entrada: ${trade.entry_price:.2f} | TP: ${trade.target_price:.2f} | SL: ${trade.stop_loss_price:.2f} | Qtd: {trade.quantity:.4f}")
 
-            # Se o símbolo já está sendo monitorado, não precisa criar novo WebSocket
-            if symbol in self.monitored_symbols:
-                logger.info(f"✅ {symbol} já está sendo monitorado")
-                return
-
-            # Iniciar WebSocket para o símbolo
-            self.monitored_symbols.add(symbol)
-            asyncio.create_task(self.monitor_symbol_websocket(symbol))
+            # Assinar stream para este símbolo
+            await self.subscribe_symbol(symbol)
 
         except Exception as e:
             logger.error(f"❌ Erro ao adicionar trade ao monitor: {e}")
 
+    async def subscribe_symbol(self, symbol: str):
+        """Assina o miniTicker do símbolo na conexão existente"""
+        try:
+            stream = f"{symbol.lower()}@miniTicker"
+
+            async with self.ws_lock:
+                if stream in self.subscribed_streams:
+                    return
+
+                if self.ws_main and self.ws_main.open:
+                    msg = {
+                        "method": "SUBSCRIBE",
+                        "params": [stream],
+                        "id": int(datetime.now().timestamp())
+                    }
+                    await self.ws_main.send(json.dumps(msg))
+                    self.subscribed_streams.add(stream)
+                    logger.info(f"📡 Inscrito em stream de monitoramento: {stream}")
+                else:
+                    logger.debug(f"⏳ Aguardando conexão para inscrever trade de {symbol}")
+
+        except Exception as e:
+            logger.error(f"❌ Erro ao inscrever stream para {symbol}: {e}")
+
     async def remove_trade_from_monitor(self, trade_id: str):
-        """Remove um trade da lista de monitoramento"""
+        """Remove um trade e cancela assinatura se não houver outros para o símbolo"""
         try:
             if trade_id not in self.open_trades:
                 return
 
             trade = self.open_trades[trade_id]
             symbol = trade.symbol
-
-            # Remover trade do dicionário
             del self.open_trades[trade_id]
 
             logger.info(f"✅ Trade {trade_id} removido do monitoramento")
 
             # Verificar se ainda há outros trades deste símbolo
-            has_other_trades = any(
-                t.symbol == symbol for t in self.open_trades.values()
-            )
+            has_other_trades = any(t.symbol == symbol for t in self.open_trades.values())
 
-            # Se não há mais trades deste símbolo, fechar WebSocket
-            if not has_other_trades and symbol in self.monitored_symbols:
-                logger.info(f"📴 Nenhum trade aberto de {symbol} - Encerrando WebSocket")
-                self.monitored_symbols.remove(symbol)
-
-                # Fechar WebSocket se existir
-                if symbol in self.websockets:
-                    await self.websockets[symbol].close()
-                    del self.websockets[symbol]
+            if not has_other_trades:
+                await self.unsubscribe_symbol(symbol)
 
         except Exception as e:
             logger.error(f"❌ Erro ao remover trade do monitor: {e}")
 
-    async def monitor_symbol_websocket(self, symbol: str):
-        """
-        Monitora um símbolo via WebSocket MiniTicker
+    async def unsubscribe_symbol(self, symbol: str):
+        """Cancela assinatura do miniTicker para economizar recursos"""
+        try:
+            stream = f"{symbol.lower()}@miniTicker"
 
-        MiniTicker = Preço atualizado A CADA TICK (mais rápido que Kline)
-        """
-        ws_symbol = symbol.lower()
-        self.reconnect_attempts[symbol] = 0
+            async with self.ws_lock:
+                if stream not in self.subscribed_streams:
+                    return
 
-        while self.is_running and symbol in self.monitored_symbols:
+                if self.ws_main and self.ws_main.open:
+                    msg = {
+                        "method": "UNSUBSCRIBE",
+                        "params": [stream],
+                        "id": int(datetime.now().timestamp())
+                    }
+                    await self.ws_main.send(json.dumps(msg))
+                    self.subscribed_streams.remove(stream)
+                    logger.info(f"📴 Cancelada assinatura de stream: {stream}")
+
+        except Exception as e:
+            logger.error(f"❌ Erro ao cancelar stream para {symbol}: {e}")
+
+    async def monitor_multi_stream(self):
+        """Mantém conexão centralizada para monitorar trades abertos"""
+        reconnect_attempts = 0
+
+        while self.is_running:
             try:
-                # URL do WebSocket MiniTicker (24hr ticker info em tempo real)
-                # miniTicker = Preço mais recente + volume
-                ws_url = f"wss://fstream.binance.com/ws/{ws_symbol}@miniTicker"
-
-                logger.info(f"🔌 Conectando WebSocket MiniTicker de {symbol}...")
+                base_url = "wss://fstream.binance.com/stream"
+                logger.info("🔌 Conectando WebSocket Multi-Stream de Monitoramento...")
 
                 async with websockets.connect(
-                    ws_url,
+                    base_url,
                     ping_interval=20,
                     ping_timeout=10,
                     close_timeout=5
                 ) as websocket:
 
-                    self.websockets[symbol] = websocket
-                    self.reconnect_attempts[symbol] = 0
+                    self.ws_main = websocket
+                    reconnect_attempts = 0
 
-                    logger.info(f"✅ WebSocket MiniTicker de {symbol} conectado!")
+                    # Assinar símbolos que já estão em monitoramento (em caso de reconexão)
+                    symbols_to_sub = set(t.symbol for t in self.open_trades.values())
+                    if symbols_to_sub:
+                        streams = [f"{s.lower()}@miniTicker" for s in symbols_to_sub]
+                        msg = {
+                            "method": "SUBSCRIBE",
+                            "params": streams,
+                            "id": int(datetime.now().timestamp())
+                        }
+                        await websocket.send(json.dumps(msg))
+                        self.subscribed_streams.update(streams)
+                        logger.info(f"✅ Reconectado e assinado em {len(streams)} streams de monitoramento")
 
-                    # Loop principal de recepção de dados
+                    logger.info("✅ Trade Monitor WebSocket conectado!")
+
                     async for message in websocket:
                         try:
                             data = json.loads(message)
 
-                            # MiniTicker contém preço atual (c = close price)
-                            if 'c' in data:
-                                current_price = float(data['c'])
+                            if "stream" in data and "data" in data:
+                                payload = data["data"]
+                                if 'c' in payload:
+                                    symbol = payload["s"] # 's' é o símbolo no ticker da Binance
+                                    current_price = float(payload['c'])
+                                    await self.process_price_tick(symbol, current_price)
 
-                                # Processar tick para todos os trades deste símbolo
-                                await self.process_price_tick(symbol, current_price)
-
-                        except json.JSONDecodeError as e:
-                            logger.error(f"❌ Erro ao decodificar JSON de {symbol}: {e}")
                         except Exception as e:
-                            logger.error(f"❌ Erro ao processar tick de {symbol}: {e}")
-
-            except websockets.exceptions.ConnectionClosed as e:
-                logger.warning(f"⚠️ WebSocket MiniTicker de {symbol} fechou: {e}")
-                await self.handle_reconnection(symbol)
+                            logger.error(f"❌ Erro ao processar ticker no monitor: {e}")
 
             except Exception as e:
-                logger.error(f"❌ Erro no WebSocket MiniTicker de {symbol}: {e}")
-                await self.handle_reconnection(symbol)
-
-    async def handle_reconnection(self, symbol: str):
-        """Lógica de reconnection automática"""
-        self.reconnect_attempts[symbol] += 1
-
-        if self.reconnect_attempts[symbol] > self.max_reconnect_attempts:
-            logger.error(f"❌ {symbol}: Máximo de tentativas de reconnection atingido")
-            logger.error(f"❌ Removendo {symbol} do monitoramento")
-            self.monitored_symbols.discard(symbol)
-            return
-
-        wait_time = min(2 ** self.reconnect_attempts[symbol], 5)
-
-        logger.warning(f"🔄 Reconnection para {symbol} em {wait_time}s...")
-        await asyncio.sleep(wait_time)
+                self.ws_main = None
+                reconnect_attempts += 1
+                wait_time = min(2 ** reconnect_attempts, 30)
+                logger.warning(f"⚠️ Erro no TradeMonitor WebSocket: {e}. Reconectando em {wait_time}s...")
+                await asyncio.sleep(wait_time)
 
     async def process_price_tick(self, symbol: str, current_price: float):
         """
@@ -441,13 +450,12 @@ class TradeMonitor:
         logger.info("🛑 Encerrando TradeMonitor...")
         self.is_running = False
 
-        # Fechar todos os WebSockets
-        for symbol, ws in self.websockets.items():
+        if self.ws_main:
             try:
-                await ws.close()
-                logger.info(f"✅ WebSocket de {symbol} fechado")
+                await self.ws_main.close()
+                logger.info("✅ WebSocket centralizado fechado")
             except Exception as e:
-                logger.error(f"❌ Erro ao fechar WebSocket de {symbol}: {e}")
+                logger.error(f"❌ Erro ao fechar WebSocket: {e}")
 
         logger.info("✅ TradeMonitor encerrado")
 
