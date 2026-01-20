@@ -415,7 +415,7 @@ class Database:
             daily_stats = response.data if response.data else []
 
             # Performance por moeda (VIEW)
-            response = self.client.from_('performance_by_symbol').select('*').execute()
+            response = self.client.from_('performance_by_symbol_mrrobot').select('*').execute()
             performance = response.data if response.data else []
 
             # Calcular totais
