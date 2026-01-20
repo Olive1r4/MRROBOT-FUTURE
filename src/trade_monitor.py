@@ -133,15 +133,15 @@ class TradeMonitor:
                 return
 
             for trade_db in open_trades_db:
-                # Converter para OpenTrade com segurança usando .get()
+                # Converter para OpenTrade com segurança usando .get() e tratando None
                 open_trade = OpenTrade(
                     trade_id=trade_db.get('id'),
                     symbol=trade_db.get('symbol'),
-                    entry_price=float(trade_db.get('entry_price', 0)),
-                    quantity=float(trade_db.get('quantity', 0)),
-                    leverage=int(trade_db.get('leverage', 1)),
-                    target_price=float(trade_db.get('target_price', 0)),
-                    stop_loss_price=float(trade_db.get('stop_loss_price', 0)),
+                    entry_price=float(trade_db.get('entry_price') or 0),
+                    quantity=float(trade_db.get('quantity') or 0),
+                    leverage=int(trade_db.get('leverage') or 1),
+                    target_price=float(trade_db.get('target_price') or 0),
+                    stop_loss_price=float(trade_db.get('stop_loss_price') or 0),
                     entry_time=datetime.fromisoformat(trade_db.get('entry_time', datetime.now().isoformat()).replace('Z', '+00:00'))
                 )
 
@@ -174,11 +174,11 @@ class TradeMonitor:
                 open_trade = OpenTrade(
                     trade_id=trade_id,
                     symbol=trade_db.get('symbol'),
-                    entry_price=float(trade_db.get('entry_price', 0)),
-                    quantity=float(trade_db.get('quantity', 0)),
-                    leverage=int(trade_db.get('leverage', 1)),
-                    target_price=float(trade_db.get('target_price', 0)),
-                    stop_loss_price=float(trade_db.get('stop_loss_price', 0)),
+                    entry_price=float(trade_db.get('entry_price') or 0),
+                    quantity=float(trade_db.get('quantity') or 0),
+                    leverage=int(trade_db.get('leverage') or 1),
+                    target_price=float(trade_db.get('target_price') or 0),
+                    stop_loss_price=float(trade_db.get('stop_loss_price') or 0),
                     entry_time=datetime.fromisoformat(trade_db.get('entry_time', datetime.now().isoformat()).replace('Z', '+00:00'))
                 )
 
