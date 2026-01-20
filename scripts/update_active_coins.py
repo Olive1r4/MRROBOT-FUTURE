@@ -26,8 +26,8 @@ async def update_coins():
     db = Database(config)
 
     # Obter moedas já existentes
-    # get_active_symbols é async def no database.py
-    active_symbols = await db.get_active_symbols()
+    # get_active_symbols agora é síncrono no database.py
+    active_symbols = db.get_active_symbols()
     existing_list = [c['symbol'] for c in active_symbols]
 
     print(f"📊 Moedas atualmente ativas: {', '.join(existing_list)}")
@@ -35,7 +35,7 @@ async def update_coins():
     for symbol in NEW_COINS:
         try:
             # Tentar obter config existente
-            config_data = await db.get_coin_config(symbol)
+            config_data = db.get_coin_config(symbol)
 
             if config_data:
                 # Apenas ativar se já existe (execução síncrona no SDK atual)
