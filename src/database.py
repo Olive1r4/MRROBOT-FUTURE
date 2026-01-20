@@ -36,7 +36,7 @@ class Database:
     async def get_coin_config(self, symbol: str) -> Optional[Dict]:
         """Obtém a configuração de uma moeda"""
         try:
-            response = self.client.table('coins_config')\
+            response = self.client.table('coins_mrrobot')\
                 .select('*')\
                 .eq('symbol', symbol)\
                 .single()\
@@ -50,7 +50,7 @@ class Database:
     async def get_active_coins(self) -> List[Dict]:
         """Obtém todas as moedas ativas"""
         try:
-            response = self.client.table('coins_config')\
+            response = self.client.table('coins_mrrobot')\
                 .select('*')\
                 .eq('is_active', True)\
                 .execute()
@@ -63,7 +63,7 @@ class Database:
     async def update_coin_status(self, symbol: str, is_active: bool):
         """Atualiza o status de uma moeda"""
         try:
-            self.client.table('coins_config')\
+            self.client.table('coins_mrrobot')\
                 .update({'is_active': is_active})\
                 .eq('symbol', symbol)\
                 .execute()
@@ -88,7 +88,7 @@ class Database:
             ID do trade criado
         """
         try:
-            response = self.client.table('trades_history')\
+            response = self.client.table('trades_mrrobot')\
                 .insert(trade_data)\
                 .execute()
 
@@ -103,7 +103,7 @@ class Database:
     async def update_trade(self, trade_id: int, update_data: Dict):
         """Atualiza um trade existente"""
         try:
-            self.client.table('trades_history')\
+            self.client.table('trades_mrrobot')\
                 .update(update_data)\
                 .eq('id', trade_id)\
                 .execute()
@@ -117,7 +117,7 @@ class Database:
         """Fecha um trade e calcula o PnL"""
         try:
             # Obter dados do trade
-            response = self.client.table('trades_history')\
+            response = self.client.table('trades_mrrobot')\
                 .select('*')\
                 .eq('id', trade_id)\
                 .single()\
@@ -173,7 +173,7 @@ class Database:
     async def get_open_trades(self) -> List[Dict]:
         """Obtém todos os trades abertos"""
         try:
-            response = self.client.table('trades_history')\
+            response = self.client.table('trades_mrrobot')\
                 .select('*')\
                 .eq('status', 'open')\
                 .execute()
@@ -186,7 +186,7 @@ class Database:
     async def get_trade_by_id(self, trade_id: int) -> Optional[Dict]:
         """Obtém um trade específico por ID"""
         try:
-            response = self.client.table('trades_history')\
+            response = self.client.table('trades_mrrobot')\
                 .select('*')\
                 .eq('id', trade_id)\
                 .single()\
@@ -212,7 +212,7 @@ class Database:
                 'status': 'closed'
             }
 
-            self.client.table('trades_history')\
+            self.client.table('trades_mrrobot')\
                 .update(update_data)\
                 .eq('id', trade_id)\
                 .execute()
@@ -225,7 +225,7 @@ class Database:
     async def get_trades_by_symbol(self, symbol: str, status: str = None) -> List[Dict]:
         """Obtém trades de um símbolo específico"""
         try:
-            query = self.client.table('trades_history').select('*').eq('symbol', symbol)
+            query = self.client.table('trades_mrrobot').select('*').eq('symbol', symbol)
 
             if status:
                 query = query.eq('status', status)
@@ -243,7 +243,7 @@ class Database:
         Retorna o ID do trade criado
         """
         try:
-            response = self.client.table('trades_history')\
+            response = self.client.table('trades_mrrobot')\
                 .insert(trade_data)\
                 .execute()
 
@@ -272,7 +272,7 @@ class Database:
                 'trade_id': trade_id
             }
 
-            self.client.table('bot_logs').insert(log_data).execute()
+            self.client.table('logs_mrrobot').insert(log_data).execute()
         except Exception as e:
             # Não propagar erro de log para não interromper operação
             logger.error(f"❌ Erro ao salvar log no banco: {str(e)}")
@@ -287,7 +287,7 @@ class Database:
             if not trade_date:
                 trade_date = datetime.now().date()
 
-            response = self.client.table('daily_pnl')\
+            response = self.client.table('daily_stats_mrrobot')\
                 .select('*')\
                 .eq('trade_date', trade_date.isoformat())\
                 .limit(1)\
@@ -318,7 +318,7 @@ class Database:
                     'losing_trades': 0 if is_win else 1,
                     'is_circuit_breaker_active': False
                 }
-                self.client.table('daily_pnl').insert(data).execute()
+                self.client.table('daily_stats_mrrobot').insert(data).execute()
             else:
                 # Atualizar registro existente
                 data = {
@@ -328,7 +328,7 @@ class Database:
                     'losing_trades': int(daily_pnl['losing_trades']) + (0 if is_win else 1),
                 }
 
-                self.client.table('daily_pnl')\
+                self.client.table('daily_stats_mrrobot')\
                     .update(data)\
                     .eq('trade_date', trade_date.isoformat())\
                     .execute()
@@ -340,7 +340,7 @@ class Database:
     async def activate_circuit_breaker(self, trade_date: date):
         """Ativa o circuit breaker para um dia"""
         try:
-            self.client.table('daily_pnl')\
+            self.client.table('daily_stats_mrrobot')\
                 .update({
                     'is_circuit_breaker_active': True,
                     'circuit_breaker_activated_at': datetime.now().isoformat()
@@ -359,7 +359,7 @@ class Database:
     async def get_trade_cooldown(self, symbol: str) -> Optional[Dict]:
         """Obtém o cooldown de uma moeda"""
         try:
-            response = self.client.table('trade_cooldown')\
+            response = self.client.table('cooldown_mrrobot')\
                 .select('*')\
                 .eq('symbol', symbol)\
                 .single()\
@@ -386,13 +386,13 @@ class Database:
 
             if existing:
                 # Atualizar
-                self.client.table('trade_cooldown')\
+                self.client.table('cooldown_mrrobot')\
                     .update(data)\
                     .eq('symbol', symbol)\
                     .execute()
             else:
                 # Inserir
-                self.client.table('trade_cooldown').insert(data).execute()
+                self.client.table('cooldown_mrrobot').insert(data).execute()
 
             logger.debug(f"✅ Cooldown de {symbol} definido até {cooldown_until}")
         except Exception as e:
@@ -406,7 +406,7 @@ class Database:
         """Obtém estatísticas dos últimos N dias"""
         try:
             # PnL por dia
-            response = self.client.table('daily_pnl')\
+            response = self.client.table('daily_stats_mrrobot')\
                 .select('*')\
                 .order('trade_date', desc=True)\
                 .limit(days)\
