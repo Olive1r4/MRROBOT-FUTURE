@@ -209,13 +209,15 @@ async def execute_trade(
         risk_manager.register_order()
 
         # 8. SALVAR NO BANCO DE DADOS
-        # Campos básicos obrigatórios para trades_mrrobot
+        # Campos necessários para o bot funcionar e monitorar
         trade_data = {
             'symbol': symbol,
             'side': 'buy',
             'entry_price': current_price,
             'quantity': quantity,
             'leverage': leverage,
+            'target_price': signal['take_profit'],
+            'stop_loss_price': signal['stop_loss'],
             'status': 'open'
         }
 
