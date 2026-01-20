@@ -24,7 +24,7 @@ class RiskManager:
         logger.info(f"   ⏱️ Trade Cooldown: {self.config.TRADE_COOLDOWN_SECONDS}s")
         logger.info(f"   🚦 Rate Limit: {self.config.MAX_ORDERS_PER_MINUTE} ordens/minuto")
 
-    async def check_daily_stop_loss(self) -> Tuple[bool, str]:
+    def check_daily_stop_loss(self) -> Tuple[bool, str]:
         """
         Verifica se o circuit breaker do stop loss diário está ativo
 
@@ -33,7 +33,7 @@ class RiskManager:
         """
         try:
             today = datetime.now().date()
-            daily_pnl = await self.db.get_daily_pnl(today)
+            daily_pnl = self.db.get_daily_pnl(today)
 
             if not daily_pnl:
                 # Primeiro trade do dia
@@ -55,7 +55,7 @@ class RiskManager:
 
             if total_pnl < -daily_loss_threshold:
                 # Ativar circuit breaker
-                await self.db.activate_circuit_breaker(today)
+                self.db.activate_circuit_breaker(today)
                 logger.error(f"🔴 CIRCUIT BREAKER ATIVADO!")
                 logger.error(f"   PnL do dia: ${total_pnl:.2f}")
                 logger.error(f"   Threshold: ${-daily_loss_threshold:.2f}")
@@ -73,7 +73,7 @@ class RiskManager:
             # Em caso de erro, bloquear por segurança
             return False, f"Erro ao verificar stop loss diário: {str(e)}"
 
-    async def check_max_open_trades(self) -> Tuple[bool, str]:
+    def check_max_open_trades(self) -> Tuple[bool, str]:
         """
         Verifica se o número máximo de trades abertos foi atingido
 
@@ -96,7 +96,7 @@ class RiskManager:
             logger.error(f"❌ Erro ao verificar max open trades: {str(e)}")
             return False, f"Erro ao verificar trades abertos: {str(e)}"
 
-    async def check_trade_cooldown(self, symbol: str) -> Tuple[bool, str]:
+    def check_trade_cooldown(self, symbol: str) -> Tuple[bool, str]:
         """
         Verifica se o cooldown entre trades da mesma moeda foi respeitado
 
@@ -107,7 +107,7 @@ class RiskManager:
             (is_allowed: bool, reason: str)
         """
         try:
-            cooldown_data = await self.db.get_trade_cooldown(symbol)
+            cooldown_data = self.db.get_trade_cooldown(symbol)
 
             if not cooldown_data:
                 # Primeira vez tradando esta moeda
@@ -137,7 +137,7 @@ class RiskManager:
             # Em caso de erro, permitir (fail-safe)
             return True, "Erro ao verificar cooldown - permitindo"
 
-    async def set_trade_cooldown(self, symbol: str):
+    def set_trade_cooldown(self, symbol: str):
         """
         Define o cooldown para uma moeda após fechar um trade
 
@@ -148,7 +148,7 @@ class RiskManager:
             now = datetime.now()
             cooldown_until = now + timedelta(seconds=self.config.TRADE_COOLDOWN_SECONDS)
 
-            await self.db.set_trade_cooldown(symbol, now, cooldown_until)
+            self.db.set_trade_cooldown(symbol, now, cooldown_until)
 
             logger.info(f"⏱️ Cooldown definido para {symbol} até {cooldown_until.strftime('%H:%M:%S')}")
 
@@ -194,7 +194,7 @@ class RiskManager:
         except Exception as e:
             logger.error(f"❌ Erro ao registrar ordem: {str(e)}")
 
-    async def check_symbol_is_active(self, symbol: str) -> Tuple[bool, str, Optional[Dict]]:
+    def check_symbol_is_active(self, symbol: str) -> Tuple[bool, str, Optional[Dict]]:
         """
         Verifica se a moeda está ativa no banco de dados
 
@@ -222,7 +222,7 @@ class RiskManager:
             logger.error(f"❌ Erro ao verificar status da moeda: {str(e)}")
             return False, f"Erro ao verificar moeda: {str(e)}", None
 
-    async def validate_trade_entry(self, symbol: str) -> Dict:
+    def validate_trade_entry(self, symbol: str) -> Dict:
         """
         Valida todas as condições para permitir entrada em um trade
 
@@ -243,25 +243,25 @@ class RiskManager:
         coin_config = None
 
         # 1. Verificar se a moeda está ativa
-        is_active, reason, coin_config = await self.check_symbol_is_active(symbol)
+        is_active, reason, coin_config = self.check_symbol_is_active(symbol)
         reasons.append(f"Moeda: {reason}")
         if not is_active:
             allowed = False
 
         # 2. Verificar daily stop loss
-        daily_ok, daily_reason = await self.check_daily_stop_loss()
+        daily_ok, daily_reason = self.check_daily_stop_loss()
         reasons.append(f"Daily Stop Loss: {daily_reason}")
         if not daily_ok:
             allowed = False
 
         # 3. Verificar max open trades
-        max_trades_ok, max_trades_reason = await self.check_max_open_trades()
+        max_trades_ok, max_trades_reason = self.check_max_open_trades()
         reasons.append(f"Open Trades: {max_trades_reason}")
         if not max_trades_ok:
             allowed = False
 
         # 4. Verificar cooldown
-        cooldown_ok, cooldown_reason = await self.check_trade_cooldown(symbol)
+        cooldown_ok, cooldown_reason = self.check_trade_cooldown(symbol)
         reasons.append(f"Cooldown: {cooldown_reason}")
         if not cooldown_ok:
             allowed = False
@@ -286,7 +286,7 @@ class RiskManager:
             'coin_config': coin_config
         }
 
-    async def calculate_position_size(self, symbol: str, current_price: float,
+    def calculate_position_size(self, symbol: str, current_price: float,
                                      coin_config: Optional[Dict] = None) -> Tuple[float, float]:
         """
         Calcula o tamanho da posição baseado em 20% do capital disponível

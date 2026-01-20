@@ -122,14 +122,14 @@ async def execute_trade(
         logger.info(f"🚀 INICIANDO TRADE: {symbol}")
 
         # 1. VALIDAÇÕES DE RISCO
-        validation = await risk_manager.validate_trade_entry(symbol)
+        validation = risk_manager.validate_trade_entry(symbol)
 
         if not validation['allowed']:
             logger.warning(f"❌ Trade bloqueado para {symbol}")
             for reason in validation['reasons']:
                 logger.warning(f"   {reason}")
 
-            await db.log('WARNING', f'Trade bloqueado: {symbol}', {
+            db.log('WARNING', f'Trade bloqueado: {symbol}', {
                 'reasons': validation['reasons']
             }, symbol=symbol)
 
@@ -172,7 +172,7 @@ async def execute_trade(
                 logger.info(f"⏸️ Sinal de entrada NÃO confirmado para {symbol}")
                 logger.info(f"   Razão: {signal['reason']}")
 
-                await db.log('INFO', f'Sinal de entrada negado: {symbol}', {
+                db.log('INFO', f'Sinal de entrada negado: {symbol}', {
                     'reason': signal['reason'],
                     'indicators': signal['indicators']
                 }, symbol=symbol)
@@ -187,7 +187,7 @@ async def execute_trade(
         logger.info(f"✅ Sinal de entrada CONFIRMADO!")
 
         # 4. CALCULAR TAMANHO DA POSIÇÃO
-        usdt_amount, leverage = await risk_manager.calculate_position_size(
+        usdt_amount, leverage = risk_manager.calculate_position_size(
             symbol, current_price, coin_config
         )
 
@@ -223,11 +223,15 @@ async def execute_trade(
             'mode': config.MODE
         }
 
-        trade_id = await db.create_trade(trade_data)
+        # Preparar cópia para o banco (removendo campos que não existem na tabela)
+        db_data = trade_data.copy()
+        db_data.pop('mode', None)
+
+        trade_id = db.create_trade(db_data)
 
         logger.info(f"✅ Trade criado com ID: {trade_id}")
 
-        await db.log('INFO', f'Trade aberto: {symbol}', {
+        db.log('INFO', f'Trade aberto: {symbol}', {
             'trade_id': trade_id,
             'entry_price': current_price,
             'quantity': quantity,
@@ -257,7 +261,7 @@ async def execute_trade(
     except Exception as e:
         logger.error(f"❌ Erro ao executar trade: {str(e)}", exc_info=True)
 
-        await db.log('ERROR', f'Erro ao executar trade: {symbol}', {
+        db.log('ERROR', f'Erro ao executar trade: {symbol}', {
             'error': str(e)
         }, symbol=symbol)
 
@@ -282,7 +286,7 @@ async def monitor_trade(trade_id: int):
             await asyncio.sleep(5)
 
             # Obter dados do trade
-            trade = await db.get_trade_by_id(trade_id)
+            trade = db.get_trade_by_id(trade_id)
 
             if not trade or trade['status'] != 'open':
                 logger.info(f"✋ Trade {trade_id} não está mais aberto. Parando monitoramento.")
@@ -313,7 +317,7 @@ async def monitor_trade(trade_id: int):
                 risk_manager.register_order()
 
                 # Fechar trade no banco
-                pnl, pnl_pct = await db.close_trade(
+                pnl, pnl_pct = db.close_trade(
                     trade_id,
                     current_price,
                     exit_reason,
@@ -321,12 +325,12 @@ async def monitor_trade(trade_id: int):
                 )
 
                 # Definir cooldown
-                await risk_manager.set_trade_cooldown(symbol)
+                risk_manager.set_trade_cooldown(symbol)
 
                 logger.info(f"✅ Trade {trade_id} fechado")
                 logger.info(f"   PnL: ${pnl:.2f} ({pnl_pct:+.2f}%)")
 
-                await db.log('INFO', f'Trade fechado: {symbol}', {
+                db.log('INFO', f'Trade fechado: {symbol}', {
                     'trade_id': trade_id,
                     'exit_price': current_price,
                     'pnl': pnl,
@@ -342,7 +346,7 @@ async def monitor_trade(trade_id: int):
     except Exception as e:
         logger.error(f"❌ Erro ao monitorar trade {trade_id}: {str(e)}", exc_info=True)
 
-        await db.log('ERROR', f'Erro ao monitorar trade', {
+        db.log('ERROR', f'Erro ao monitorar trade', {
             'trade_id': trade_id,
             'error': str(e)
         }, trade_id=trade_id)
@@ -372,10 +376,10 @@ async def health_check():
         exchange_ok = exchange.is_market_open('BTCUSDT')
 
         # Obter estatísticas
-        stats = await db.get_statistics(days=1)
+        stats = db.get_statistics(days=1)
 
         # Verificar circuit breaker
-        daily_pnl = await db.get_daily_pnl()
+        daily_pnl = db.get_daily_pnl()
         circuit_breaker_active = daily_pnl.get('is_circuit_breaker_active', False) if daily_pnl else False
 
         return {
@@ -487,7 +491,7 @@ async def manual_trade(trade: ManualTrade, background_tasks: BackgroundTasks):
 async def get_open_trades():
     """Retorna todos os trades abertos"""
     try:
-        trades = await db.get_open_trades()
+        trades = db.get_open_trades()
         return {
             'success': True,
             'count': len(trades),
@@ -502,7 +506,7 @@ async def get_open_trades():
 async def get_trade(trade_id: int):
     """Retorna informações de um trade específico"""
     try:
-        trade = await db.get_trade_by_id(trade_id)
+        trade = db.get_trade_by_id(trade_id)
 
         if not trade:
             raise HTTPException(status_code=404, detail="Trade não encontrado")
@@ -522,7 +526,7 @@ async def get_trade(trade_id: int):
 async def close_trade_manually(trade_id: int):
     """Fecha um trade manualmente"""
     try:
-        trade = await db.get_trade_by_id(trade_id)
+        trade = db.get_trade_by_id(trade_id)
 
         if not trade:
             raise HTTPException(status_code=404, detail="Trade não encontrado")
@@ -538,14 +542,14 @@ async def close_trade_manually(trade_id: int):
         order_exit = exchange.create_market_sell_order(symbol, quantity, current_price)
 
         # Fechar no banco
-        pnl, pnl_pct = await db.close_trade(
+        pnl, pnl_pct = db.close_trade(
             trade_id,
             current_price,
             "Fechamento manual",
             order_exit.get('id')
         )
 
-        await risk_manager.set_trade_cooldown(symbol)
+        risk_manager.set_trade_cooldown(symbol)
 
         logger.info(f"✅ Trade {trade_id} fechado manualmente")
 
@@ -569,7 +573,7 @@ async def close_trade_manually(trade_id: int):
 async def get_statistics(days: int = 30):
     """Retorna estatísticas dos últimos N dias"""
     try:
-        stats = await db.get_statistics(days)
+        stats = db.get_statistics(days)
         return {
             'success': True,
             'period_days': days,
@@ -584,7 +588,7 @@ async def get_statistics(days: int = 30):
 async def get_coins_config():
     """Retorna configuração de todas as moedas"""
     try:
-        coins = await db.get_active_coins()
+        coins = db.get_active_coins()
         return {
             'success': True,
             'count': len(coins),
@@ -599,13 +603,13 @@ async def get_coins_config():
 async def toggle_coin_status(symbol: str):
     """Ativa/desativa uma moeda"""
     try:
-        coin_config = await db.get_coin_config(symbol)
+        coin_config = db.get_coin_config(symbol)
 
         if not coin_config:
             raise HTTPException(status_code=404, detail="Moeda não encontrada")
 
         new_status = not coin_config['is_active']
-        await db.update_coin_status(symbol, new_status)
+        db.update_coin_status(symbol, new_status)
 
         return {
             'success': True,

@@ -399,7 +399,7 @@ class TradeMonitor:
                 logger.info(f"🔵 MOCK MODE: Simulando venda de {trade.quantity:.4f} {trade.symbol}")
 
             # Atualizar trade no banco de dados
-            await self.db.update_trade_exit(
+            self.db.update_trade_exit(
                 trade_id=trade.trade_id,
                 exit_price=exit_price,
                 exit_reason=exit_reason,
@@ -408,10 +408,10 @@ class TradeMonitor:
             )
 
             # Atualizar PnL diário
-            await self.db.update_daily_pnl(datetime.now().date(), trade.pnl_usdt)
+            self.db.update_daily_pnl(datetime.now().date(), trade.pnl_usdt)
 
             # Definir cooldown para o símbolo
-            await self.risk_manager.set_trade_cooldown(trade.symbol)
+            self.risk_manager.set_trade_cooldown(trade.symbol)
 
             # Notificar via Telegram
             await self.telegram.notify_trade_close(

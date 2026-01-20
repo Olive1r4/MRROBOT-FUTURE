@@ -47,7 +47,7 @@ class Database:
             logger.error(f"❌ Erro ao obter configuração de {symbol}: {str(e)}")
             return None
 
-    async def get_active_coins(self) -> List[Dict]:
+    def get_active_coins(self) -> List[Dict]:
         """Obtém todas as moedas ativas"""
         try:
             response = self.client.table('coins_mrrobot')\
@@ -60,7 +60,7 @@ class Database:
             logger.error(f"❌ Erro ao obter moedas ativas: {str(e)}")
             return []
 
-    async def update_coin_status(self, symbol: str, is_active: bool):
+    def update_coin_status(self, symbol: str, is_active: bool):
         """Atualiza o status de uma moeda"""
         try:
             self.client.table('coins_mrrobot')\
@@ -77,7 +77,7 @@ class Database:
     # TRADES HISTORY
     # ============================================
 
-    async def create_trade(self, trade_data: Dict) -> int:
+    def create_trade(self, trade_data: Dict) -> int:
         """
         Cria um novo registro de trade
 
@@ -100,7 +100,7 @@ class Database:
             logger.error(f"❌ Erro ao criar trade: {str(e)}")
             raise
 
-    async def update_trade(self, trade_id: int, update_data: Dict):
+    def update_trade(self, trade_id: int, update_data: Dict):
         """Atualiza um trade existente"""
         try:
             self.client.table('trades_mrrobot')\
@@ -113,7 +113,7 @@ class Database:
             logger.error(f"❌ Erro ao atualizar trade {trade_id}: {str(e)}")
             raise
 
-    async def close_trade(self, trade_id: int, exit_price: float, exit_reason: str, order_id_exit: str = None):
+    def close_trade(self, trade_id: int, exit_price: float, exit_reason: str, order_id_exit: str = None):
         """Fecha um trade e calcula o PnL"""
         try:
             # Obter dados do trade
@@ -155,10 +155,10 @@ class Database:
                 'order_id_exit': order_id_exit
             }
 
-            await self.update_trade(trade_id, update_data)
+            self.update_trade(trade_id, update_data)
 
             # Atualizar PnL diário
-            await self.update_daily_pnl(datetime.now().date(), pnl_net)
+            self.update_daily_pnl(datetime.now().date(), pnl_net)
 
             logger.info(f"✅ Trade {trade_id} fechado")
             logger.info(f"   Entry: ${entry_price:.4f} | Exit: ${exit_price:.4f}")
@@ -183,7 +183,7 @@ class Database:
             logger.error(f"❌ Erro ao obter trades abertos: {str(e)}")
             return []
 
-    async def get_trade_by_id(self, trade_id: int) -> Optional[Dict]:
+    def get_trade_by_id(self, trade_id: int) -> Optional[Dict]:
         """Obtém um trade específico por ID"""
         try:
             response = self.client.table('trades_mrrobot')\
@@ -197,7 +197,7 @@ class Database:
             logger.error(f"❌ Erro ao obter trade {trade_id}: {str(e)}")
             return None
 
-    async def update_trade_exit(self, trade_id: str, exit_price: float, exit_reason: str, pnl_percent: float, pnl_usdt: float):
+    def update_trade_exit(self, trade_id: str, exit_price: float, exit_reason: str, pnl_percent: float, pnl_usdt: float):
         """
         Atualiza um trade com dados de saída
         Usado pelo TradeMonitor
@@ -222,7 +222,7 @@ class Database:
             logger.error(f"❌ Erro ao atualizar saída do trade {trade_id}: {str(e)}")
             raise
 
-    async def get_trades_by_symbol(self, symbol: str, status: str = None) -> List[Dict]:
+    def get_trades_by_symbol(self, symbol: str, status: str = None) -> List[Dict]:
         """Obtém trades de um símbolo específico"""
         try:
             query = self.client.table('trades_mrrobot').select('*').eq('symbol', symbol)
@@ -237,7 +237,7 @@ class Database:
             logger.error(f"❌ Erro ao obter trades de {symbol}: {str(e)}")
             return []
 
-    async def save_trade_history(self, trade_data: Dict) -> str:
+    def save_trade_history(self, trade_data: Dict) -> str:
         """
         Salva um novo trade (usado pelo Market Scanner)
         Retorna o ID do trade criado
@@ -261,7 +261,7 @@ class Database:
     # BOT LOGS
     # ============================================
 
-    async def log(self, level: str, message: str, details: Dict = None, symbol: str = None, trade_id: int = None):
+    def log(self, level: str, message: str, details: Dict = None, symbol: str = None, trade_id: int = None):
         """Registra um log no banco de dados"""
         try:
             log_data = {
@@ -281,7 +281,7 @@ class Database:
     # DAILY PNL
     # ============================================
 
-    async def get_daily_pnl(self, trade_date: date = None) -> Optional[Dict]:
+    def get_daily_pnl(self, trade_date: date = None) -> Optional[Dict]:
         """Obtém o PnL de um dia específico"""
         try:
             if not trade_date:
@@ -302,11 +302,11 @@ class Database:
             logger.error(f"❌ Erro ao obter PnL diário: {str(e)}")
             return None
 
-    async def update_daily_pnl(self, trade_date: date, pnl_usdt: float):
+    def update_daily_pnl(self, trade_date: date, pnl_usdt: float):
         """Atualiza o PnL diário (usado pelo TradeMonitor)"""
         try:
             is_win = pnl_usdt > 0
-            daily_pnl = await self.get_daily_pnl(trade_date)
+            daily_pnl = self.get_daily_pnl(trade_date)
 
             if not daily_pnl:
                 # Criar novo registro
@@ -337,7 +337,7 @@ class Database:
         except Exception as e:
             logger.error(f"❌ Erro ao atualizar PnL diário: {str(e)}")
 
-    async def activate_circuit_breaker(self, trade_date: date):
+    def activate_circuit_breaker(self, trade_date: date):
         """Ativa o circuit breaker para um dia"""
         try:
             self.client.table('daily_stats_mrrobot')\
@@ -356,7 +356,7 @@ class Database:
     # TRADE COOLDOWN
     # ============================================
 
-    async def get_trade_cooldown(self, symbol: str) -> Optional[Dict]:
+    def get_trade_cooldown(self, symbol: str) -> Optional[Dict]:
         """Obtém o cooldown de uma moeda"""
         try:
             response = self.client.table('cooldown_mrrobot')\
@@ -373,10 +373,10 @@ class Database:
             logger.error(f"❌ Erro ao obter cooldown de {symbol}: {msg}")
             return None
 
-    async def set_trade_cooldown(self, symbol: str, last_trade_time: datetime, cooldown_until: datetime):
+    def set_trade_cooldown(self, symbol: str, last_trade_time: datetime, cooldown_until: datetime):
         """Define o cooldown para uma moeda"""
         try:
-            existing = await self.get_trade_cooldown(symbol)
+            existing = self.get_trade_cooldown(symbol)
 
             data = {
                 'symbol': symbol,
@@ -402,7 +402,7 @@ class Database:
     # ESTATÍSTICAS
     # ============================================
 
-    async def get_statistics(self, days: int = 30) -> Dict:
+    def get_statistics(self, days: int = 30) -> Dict:
         """Obtém estatísticas dos últimos N dias"""
         try:
             # PnL por dia

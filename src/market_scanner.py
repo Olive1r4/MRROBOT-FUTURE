@@ -428,7 +428,7 @@ class MarketScanner:
             logger.info(f"🚀 Executando entrada em {symbol}...")
 
             # Validar com RiskManager
-            validation = await self.risk_manager.validate_trade_entry(symbol)
+            validation = self.risk_manager.validate_trade_entry(symbol)
 
             if not validation['allowed']:
                 logger.warning(f"❌ Entrada bloqueada: {symbol}")
@@ -473,7 +473,7 @@ class MarketScanner:
                 logger.info(f"   Trade ID: {trade_id}")
 
                 # Log adicional com indicadores
-                await self.db.log('INFO', f'Scanner: Trade aberto via detecção automática', {
+                self.db.log('INFO', f'Scanner: Trade aberto via detecção automática', {
                     'trade_id': trade_id,
                     'symbol': symbol,
                     'entry_price': entry_price,
