@@ -420,32 +420,31 @@ class MarketScanner:
                     logger.warning(f"   • {reason}")
                 return
 
-            # Fazer requisição interna para o endpoint de trade
-            import httpx
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"http://localhost:{self.config.WEBHOOK_PORT}/trade/manual",
-                    json={
-                        "symbol": symbol,
-                        "webhook_price": entry_price,
-                        "indicators": {
-                            "rsi": state.rsi,
-                            "bb_lower": state.bb_lower,
-                            "ema_200": state.ema_200
-                        }
-                    },
-                    timeout=30.0
-                )
+            # Importar e chamar diretamente a função execute_trade
+            from src.main import execute_trade
 
-                if response.status_code == 200:
-                    data = response.json()
-                    logger.info(f"✅ Trade executado com sucesso!")
-                    logger.info(f"   Trade ID: {data.get('trade_id')}")
-                else:
-                    logger.error(f"❌ Erro ao executar trade: {response.status_code}")
+            result = await execute_trade(symbol, entry_price)
+
+            if result.get('success'):
+                trade_id = result.get('trade_id')
+                logger.info(f"✅ Trade executado com sucesso!")
+                logger.info(f"   Trade ID: {trade_id}")
+
+                # Log adicional com indicadores
+                await self.db.log('INFO', f'Scanner: Trade aberto via detecção automática', {
+                    'trade_id': trade_id,
+                    'symbol': symbol,
+                    'entry_price': entry_price,
+                    'rsi': state.rsi,
+                    'bb_lower': state.bb_lower,
+                    'ema_200': state.ema_200
+                }, symbol=symbol, trade_id=trade_id)
+            else:
+                logger.warning(f"⚠️ Trade não executado: {result.get('message')}")
+                logger.warning(f"   Razão: {result.get('reason', 'N/A')}")
 
         except Exception as e:
-            logger.error(f"❌ Erro ao executar entrada: {e}")
+            logger.error(f"❌ Erro ao executar entrada: {e}", exc_info=True)
 
     async def shutdown(self):
         """Encerra o scanner"""
