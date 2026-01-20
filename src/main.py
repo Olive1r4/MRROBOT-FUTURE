@@ -18,19 +18,31 @@ from src.risk_manager import RiskManager
 from src.database import Database
 from src.telegram_notifier import TelegramNotifier
 
+from logging.handlers import RotatingFileHandler
+
 # Garantir diretório de logs
 import os
 if not os.path.exists('logs'):
     os.makedirs('logs')
 
-# Configurar logging
+# Configurar logging com rotação (10MB por arquivo, mantém 5 backups)
+log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+log_file = 'logs/scalping_bot.log'
+
+rotating_handler = RotatingFileHandler(
+    log_file,
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5,
+    encoding='utf-8'
+)
+rotating_handler.setFormatter(log_formatter)
+
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(log_formatter)
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/scalping_bot.log'),
-        logging.StreamHandler()
-    ]
+    handlers=[rotating_handler, stream_handler]
 )
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
