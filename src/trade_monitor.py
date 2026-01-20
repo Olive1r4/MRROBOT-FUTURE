@@ -127,7 +127,7 @@ class TradeMonitor:
         try:
             logger.info("📥 Carregando trades abertos do banco de dados...")
 
-            open_trades_db = await self.db.get_open_trades()
+            open_trades_db = self.db.get_open_trades()
 
             if not open_trades_db:
                 logger.info("✅ Nenhum trade aberto encontrado")
@@ -158,7 +158,7 @@ class TradeMonitor:
     async def check_for_new_trades(self):
         """Verifica se há novos trades no banco que não estão sendo monitorados"""
         try:
-            open_trades_db = await self.db.get_open_trades()
+            open_trades_db = self.db.get_open_trades()
 
             if not open_trades_db:
                 return

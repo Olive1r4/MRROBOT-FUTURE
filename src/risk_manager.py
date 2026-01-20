@@ -81,7 +81,7 @@ class RiskManager:
             (is_allowed: bool, reason: str)
         """
         try:
-            open_trades = await self.db.get_open_trades()
+            open_trades = self.db.get_open_trades()
             open_count = len(open_trades)
 
             if open_count >= self.config.MAX_OPEN_TRADES:
@@ -205,7 +205,7 @@ class RiskManager:
             (is_active: bool, reason: str, config: dict)
         """
         try:
-            coin_config = await self.db.get_coin_config(symbol)
+            coin_config = self.db.get_coin_config(symbol)
 
             if not coin_config:
                 logger.warning(f"⚠️ Moeda {symbol} não encontrada no banco de dados")

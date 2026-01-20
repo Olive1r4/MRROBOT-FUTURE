@@ -33,7 +33,7 @@ class Database:
     # COINS CONFIG
     # ============================================
 
-    async def get_coin_config(self, symbol: str) -> Optional[Dict]:
+    def get_coin_config(self, symbol: str) -> Optional[Dict]:
         """Obtém a configuração de uma moeda"""
         try:
             response = self.client.table('coins_mrrobot')\
@@ -170,7 +170,7 @@ class Database:
             logger.error(f"❌ Erro ao fechar trade {trade_id}: {str(e)}")
             raise
 
-    async def get_open_trades(self) -> List[Dict]:
+    def get_open_trades(self) -> List[Dict]:
         """Obtém todos os trades abertos"""
         try:
             response = self.client.table('trades_mrrobot')\
@@ -443,7 +443,7 @@ class Database:
     # HELPERS
     # ============================================
 
-    async def get_active_symbols(self) -> List[Dict]:
+    def get_active_symbols(self) -> List[Dict]:
         """Obtém lista de símbolos ativos (usado pelo scanner)"""
         try:
             response = self.client.table('coins_mrrobot')\

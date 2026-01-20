@@ -124,7 +124,7 @@ class MarketScanner:
         try:
 
             # Usar método centralizado do banco de dados
-            active_coins = await self.db.get_active_symbols()
+            active_coins = self.db.get_active_symbols()
 
             if active_coins:
                 self.active_symbols = [coin['symbol'] for coin in active_coins]
@@ -379,7 +379,7 @@ class MarketScanner:
 
             # PRIORIDADE DE SINAL: Se já existe trade aberto, ignorar todos os outros ticks
             # Isso poupa processamento e garante a regra do "primeiro que disparar ganha"
-            open_trades = await self.db.get_open_trades()
+            open_trades = self.db.get_open_trades()
             if len(open_trades) >= self.config.MAX_OPEN_TRADES:
                 return
 
