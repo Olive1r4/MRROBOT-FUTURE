@@ -405,6 +405,22 @@ class MarketScanner:
             if state.rsi == 0 or state.ema_200 == 0:
                 return
 
+            # CONDIÇÕES DE ENTRADA (Cálculo prévio para o log)
+            condition_rsi = state.rsi < self.config.RSI_OVERSOLD
+            condition_bb = current_price <= state.bb_lower * 1.001  # 0.1% de tolerância
+
+            # Log detalhado (a cada 30s para não poluir)
+            time_since_last = (datetime.now() - state.last_update).total_seconds()
+            if time_since_last >= 30:
+                status_msg = f"🔍 {symbol} ${current_price:.2f} | RSI: {state.rsi:.2f} {'✅' if condition_rsi else '❌'} | BB: ${state.bb_lower:.2f} {'✅' if condition_bb else '❌'} | EMA: ${state.ema_200:.2f}"
+
+                # Adicionar aviso se as entradas estão travadas pelo limite de trades
+                if self.open_trades_count >= self.config.MAX_OPEN_TRADES:
+                    status_msg += " | ⏸️ (Limite de trades atingido)"
+
+                logger.info(status_msg)
+                state.last_update = datetime.now()
+
             # PRIORIDADE DE SINAL: Verificação de cache local (ultra rápido)
             if self.open_trades_count >= self.config.MAX_OPEN_TRADES:
                 return
@@ -415,21 +431,6 @@ class MarketScanner:
                     return  # Ainda em cooldown
                 else:
                     del self.blocked_until[symbol]  # Cooldown expirado
-
-            # CONDIÇÕES DE ENTRADA (VERIFICADAS A CADA TICK)
-            # 1. RSI < 25 (oversold)
-            # 2. Preço tocou/rompeu BB Lower
-            # Removido: 3. Preço acima EMA 200 (scalping funciona em ambas direções)
-
-            condition_rsi = state.rsi < self.config.RSI_OVERSOLD
-            condition_bb = current_price <= state.bb_lower * 1.001  # 0.1% de tolerância
-
-            # Log detalhado (a cada 30s para não poluir)
-            time_since_last = (datetime.now() - state.last_update).total_seconds()
-            if time_since_last >= 30:
-                logger.info(f"🔍 {symbol} ${current_price:.2f} | RSI: {state.rsi:.2f} {'✅' if condition_rsi else '❌'} | BB: ${state.bb_lower:.2f} {'✅' if condition_bb else '❌'} | EMA: ${state.ema_200:.2f}")
-
-                state.last_update = datetime.now()
 
             # Se TODAS as condições OK: EXECUTAR COMPRA IMEDIATAMENTE
             if condition_rsi and condition_bb:
