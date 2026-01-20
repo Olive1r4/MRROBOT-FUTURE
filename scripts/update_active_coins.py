@@ -26,6 +26,7 @@ async def update_coins():
     db = Database(config)
 
     # Obter moedas já existentes
+    # get_active_symbols é async def no database.py
     active_symbols = await db.get_active_symbols()
     existing_list = [c['symbol'] for c in active_symbols]
 
@@ -37,8 +38,8 @@ async def update_coins():
             config_data = await db.get_coin_config(symbol)
 
             if config_data:
-                # Apenas ativar se já existe
-                await db.client.table('coins_mrrobot').update({'is_active': True}).eq('symbol', symbol).execute()
+                # Apenas ativar se já existe (execução síncrona no SDK atual)
+                db.client.table('coins_mrrobot').update({'is_active': True}).eq('symbol', symbol).execute()
                 print(f"✅ {symbol} reativado.")
             else:
                 # Criar novo registro
@@ -46,9 +47,9 @@ async def update_coins():
                     'symbol': symbol,
                     'is_active': True,
                     'leverage': 5,
-                    'position_size_percent': 0.20
+                    'allocation_percentage': 20.0
                 }
-                await db.client.table('coins_mrrobot').insert(new_data).execute()
+                db.client.table('coins_mrrobot').insert(new_data).execute()
                 print(f"✨ {symbol} adicionado e ativado.")
         except Exception as e:
             print(f"❌ Erro ao processar {symbol}: {e}")
@@ -56,7 +57,10 @@ async def update_coins():
     # Manter BTC, ETH e BNB ativos também
     base_coins = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
     for symbol in base_coins:
-        await db.client.table('coins_mrrobot').update({'is_active': True}).eq('symbol', symbol).execute()
+        try:
+            db.client.table('coins_mrrobot').update({'is_active': True}).eq('symbol', symbol).execute()
+        except:
+            pass
 
     print("\n🏆 Lista de moedas Sniper configurada com sucesso!")
 
