@@ -80,8 +80,8 @@ class MarketScanner:
         self.reconnect_attempts: Dict[str, int] = {}
         self.max_reconnect_attempts = 10
 
-        # Flag para shutdown
-        self.is_running = True
+        # Cooldown após bloqueio (evita loop infinito)
+        self.blocked_until: Dict[str, datetime] = {}
 
         # Flag para shutdown
         self.is_running = True
@@ -373,24 +373,30 @@ class MarketScanner:
             if state.rsi == 0 or state.ema_200 == 0:
                 return
 
+            # Verificar cooldown após bloqueio
+            if symbol in self.blocked_until:
+                if datetime.now() < self.blocked_until[symbol]:
+                    return  # Ainda em cooldown
+                else:
+                    del self.blocked_until[symbol]  # Cooldown expirado
+
             # CONDIÇÕES DE ENTRADA (VERIFICADAS A CADA TICK)
             # 1. RSI < 25 (oversold)
             # 2. Preço tocou/rompeu BB Lower
-            # 3. Preço acima EMA 200 (uptrend)
+            # Removido: 3. Preço acima EMA 200 (scalping funciona em ambas direções)
 
             condition_rsi = state.rsi < self.config.RSI_OVERSOLD
             condition_bb = current_price <= state.bb_lower * 1.001  # 0.1% de tolerância
-            condition_ema = current_price > state.ema_200
 
             # Log detalhado (a cada 30s para não poluir)
             time_since_last = (datetime.now() - state.last_update).total_seconds()
             if time_since_last >= 30:
-                logger.info(f"🔍 {symbol} ${current_price:.2f} | RSI: {state.rsi:.2f} {'✅' if condition_rsi else '❌'} | BB: ${state.bb_lower:.2f} {'✅' if condition_bb else '❌'} | EMA: ${state.ema_200:.2f} {'✅' if condition_ema else '❌'}")
+                logger.info(f"🔍 {symbol} ${current_price:.2f} | RSI: {state.rsi:.2f} {'✅' if condition_rsi else '❌'} | BB: ${state.bb_lower:.2f} {'✅' if condition_bb else '❌'} | EMA: ${state.ema_200:.2f}")
 
                 state.last_update = datetime.now()
 
             # Se TODAS as condições OK: EXECUTAR COMPRA IMEDIATAMENTE
-            if condition_rsi and condition_bb and condition_ema:
+            if condition_rsi and condition_bb:
                 logger.info(f"🎯 SINAL DE COMPRA: {symbol} | RSI: {state.rsi:.2f} | BB: ${state.bb_lower:.2f} | EMA: ${state.ema_200:.2f}")
 
                 # EXECUTAR TRADE
@@ -418,6 +424,10 @@ class MarketScanner:
                 logger.warning(f"❌ Entrada bloqueada: {symbol}")
                 for reason in validation['reasons']:
                     logger.warning(f"   • {reason}")
+
+                # Adicionar cooldown de 60s para evitar loop infinito
+                self.blocked_until[symbol] = datetime.now() + timedelta(seconds=60)
+                logger.info(f"⏰ Cooldown de 60s ativado para {symbol}")
                 return
 
             # Calcular TP e SL baseado nos indicadores atuais
@@ -464,6 +474,10 @@ class MarketScanner:
             else:
                 logger.warning(f"⚠️ Trade não executado: {result.get('message')}")
                 logger.warning(f"   Razão: {result.get('reason', 'N/A')}")
+
+                # Adicionar cooldown de 60s se falhou
+                self.blocked_until[symbol] = datetime.now() + timedelta(seconds=60)
+                logger.info(f"⏰ Cooldown de 60s ativado para {symbol}")
 
         except Exception as e:
             logger.error(f"❌ Erro ao executar entrada: {e}", exc_info=True)
