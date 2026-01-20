@@ -71,11 +71,11 @@ class Config(BaseSettings):
     # - EMA(200): Filtro de tendência de longo prazo
 
     RSI_PERIOD: int = Field(default=7, description="Período do RSI (ultra responsivo)")
-    RSI_OVERSOLD: float = Field(default=30, description="RSI < 30 = oversold")
-    RSI_OVERBOUGHT: float = Field(default=70, description="Nível de sobrecompra do RSI")
+    RSI_OVERSOLD: float = Field(default=25, description="RSI < 25 = oversold")
+    RSI_OVERBOUGHT: float = Field(default=75, description="Nível de sobrecompra do RSI")
 
     BB_PERIOD: int = Field(default=20, description="Período das Bandas de Bollinger")
-    BB_STD_DEV: float = Field(default=2.0, description="Desvio padrão 2.0 (padrão)")
+    BB_STD_DEV: float = Field(default=2.5, description="Desvio padrão 2.5 (filtros extremos)")
 
     EMA_PERIOD: int = Field(default=200, description="EMA 200 para filtro de tendência")
 
