@@ -136,7 +136,10 @@ class TradeMonitor:
                 return
 
             for trade_db in open_trades_db:
-                # Converter para OpenTrade com segurança usando .get() e tratando None
+                # Tratar string de tempo (Supabase pode enviar mais de 6 casas decimais)
+                entry_time_str = self._fix_isoformat(trade_db.get('entry_time', datetime.now().isoformat()))
+
+                # Converter para OpenTrade com segurança
                 open_trade = OpenTrade(
                     trade_id=trade_db.get('id'),
                     symbol=trade_db.get('symbol'),
@@ -145,7 +148,7 @@ class TradeMonitor:
                     leverage=int(trade_db.get('leverage') or 1),
                     target_price=float(trade_db.get('target_price') or 0),
                     stop_loss_price=float(trade_db.get('stop_loss_price') or 0),
-                    entry_time=datetime.fromisoformat(trade_db.get('entry_time', datetime.now().isoformat()).replace('Z', '+00:00')),
+                    entry_time=datetime.fromisoformat(entry_time_str.replace('Z', '+00:00')),
                     mode=trade_db.get('mode', 'MOCK')
                 )
 
@@ -175,6 +178,9 @@ class TradeMonitor:
                 # Novo trade detectado
                 logger.info(f"🆕 Novo trade detectado: {trade_id}")
 
+                # Tratar string de tempo (Supabase pode enviar mais de 6 casas decimais)
+                entry_time_str = self._fix_isoformat(trade_db.get('entry_time', datetime.now().isoformat()))
+
                 open_trade = OpenTrade(
                     trade_id=trade_id,
                     symbol=trade_db.get('symbol'),
@@ -183,7 +189,7 @@ class TradeMonitor:
                     leverage=int(trade_db.get('leverage') or 1),
                     target_price=float(trade_db.get('target_price') or 0),
                     stop_loss_price=float(trade_db.get('stop_loss_price') or 0),
-                    entry_time=datetime.fromisoformat(trade_db.get('entry_time', datetime.now().isoformat()).replace('Z', '+00:00')),
+                    entry_time=datetime.fromisoformat(entry_time_str.replace('Z', '+00:00')),
                     mode=trade_db.get('mode', 'MOCK')
                 )
 
@@ -191,6 +197,47 @@ class TradeMonitor:
 
         except Exception as e:
             logger.error(f"❌ Erro ao verificar novos trades: {e}")
+
+    def _fix_isoformat(self, timestamp_str: str) -> str:
+        """
+        Helper para garantir que a string ISO tenha precision compatível com Python 3.10
+        Python 3.10 exige 3 ou 6 dígitos nos microssegundos se houver ponto decimal.
+        """
+        if not timestamp_str or not isinstance(timestamp_str, str):
+            return timestamp_str
+
+        if '.' not in timestamp_str:
+            return timestamp_str
+
+        try:
+            # Separar a parte das frações e o resto (timezone)
+            # Ex: 2024-01-01T12:00:00.12345+00:00 -> parts=['2024-01-01T12:00:00', '12345+00:00']
+            main_part, sub_part = timestamp_str.split('.', 1)
+
+            # Encontrar onde termina a fração e começa o offset (Z, + ou -)
+            offset_idx = -1
+            for i, char in enumerate(sub_part):
+                if char in ('Z', '+', '-'):
+                    offset_idx = i
+                    break
+
+            if offset_idx == -1:
+                fraction = sub_part
+                offset = ""
+            else:
+                fraction = sub_part[:offset_idx]
+                offset = sub_part[offset_idx:]
+
+            # Ajustar fração para 6 dígitos (Python 3.10 standard)
+            if len(fraction) > 6:
+                fraction = fraction[:6]
+            elif len(fraction) < 6:
+                fraction = fraction.ljust(6, '0')
+
+            return f"{main_part}.{fraction}{offset}"
+        except Exception as e:
+            logger.error(f"⚠️ Erro ao corrigir timestamp {timestamp_str}: {e}")
+            return timestamp_str
 
     async def add_trade_to_monitor(self, trade: OpenTrade):
         """
@@ -217,7 +264,7 @@ class TradeMonitor:
                 if stream in self.subscribed_streams:
                     return
 
-                if self.ws_main and self.ws_main.open:
+                if self.ws_main and not getattr(self.ws_main, 'closed', True):
                     msg = {
                         "method": "SUBSCRIBE",
                         "params": [stream],
@@ -262,7 +309,7 @@ class TradeMonitor:
                 if stream not in self.subscribed_streams:
                     return
 
-                if self.ws_main and self.ws_main.open:
+                if self.ws_main and not getattr(self.ws_main, 'closed', True):
                     msg = {
                         "method": "UNSUBSCRIBE",
                         "params": [stream],
