@@ -90,6 +90,9 @@ class MarketScanner:
         self.ws_main: Optional[websockets.WebSocketClientProtocol] = None
         self.ws_lock = asyncio.Lock()
 
+        # Cache para evitar chamadas de DB a cada tick
+        self.open_trades_count = 0
+
     async def start(self):
         """Inicia o scanner"""
         logger.info("=" * 60)
@@ -101,6 +104,9 @@ class MarketScanner:
 
         # Task para atualizar símbolos dinamicamente
         asyncio.create_task(self.dynamic_symbol_refresher())
+
+        # Task para manter contagem de trades abertos (cache)
+        asyncio.create_task(self.open_trades_refresher())
 
         # Manter o scanner rodando
         while self.is_running:
@@ -125,6 +131,16 @@ class MarketScanner:
                 logger.error(f"❌ Erro no refresher dinâmico: {e}")
 
             await asyncio.sleep(300)  # Verificar a cada 5 minutos
+
+    async def open_trades_refresher(self):
+        """Atualiza a contagem de trades abertos periodicamente para cache"""
+        while self.is_running:
+            try:
+                open_trades = self.db.get_open_trades()
+                self.open_trades_count = len(open_trades) if open_trades else 0
+            except Exception as e:
+                logger.error(f"❌ Erro ao atualizar cache de trades: {e}")
+            await asyncio.sleep(10)  # Atualiza a cada 10s
 
     async def load_active_symbols(self):
         """Carrega símbolos ativos do banco"""
@@ -389,10 +405,8 @@ class MarketScanner:
             if state.rsi == 0 or state.ema_200 == 0:
                 return
 
-            # PRIORIDADE DE SINAL: Se já existe trade aberto, ignorar todos os outros ticks
-            # Isso poupa processamento e garante a regra do "primeiro que disparar ganha"
-            open_trades = self.db.get_open_trades()
-            if len(open_trades) >= self.config.MAX_OPEN_TRADES:
+            # PRIORIDADE DE SINAL: Verificação de cache local (ultra rápido)
+            if self.open_trades_count >= self.config.MAX_OPEN_TRADES:
                 return
 
             # Verificar cooldown após bloqueio
