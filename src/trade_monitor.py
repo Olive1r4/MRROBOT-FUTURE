@@ -28,6 +28,7 @@ class OpenTrade:
     last_update: datetime = field(default_factory=datetime.now)
     pnl_percent: float = 0.0
     pnl_usdt: float = 0.0
+    mode: str = "MOCK"
 
     def update_pnl(self, current_price: float, trading_fee: float = 0.0004):
         """
@@ -142,7 +143,8 @@ class TradeMonitor:
                     leverage=int(trade_db.get('leverage') or 1),
                     target_price=float(trade_db.get('target_price') or 0),
                     stop_loss_price=float(trade_db.get('stop_loss_price') or 0),
-                    entry_time=datetime.fromisoformat(trade_db.get('entry_time', datetime.now().isoformat()).replace('Z', '+00:00'))
+                    entry_time=datetime.fromisoformat(trade_db.get('entry_time', datetime.now().isoformat()).replace('Z', '+00:00')),
+                    mode=trade_db.get('mode', 'MOCK')
                 )
 
                 # Adicionar à lista de monitoramento
@@ -179,7 +181,8 @@ class TradeMonitor:
                     leverage=int(trade_db.get('leverage') or 1),
                     target_price=float(trade_db.get('target_price') or 0),
                     stop_loss_price=float(trade_db.get('stop_loss_price') or 0),
-                    entry_time=datetime.fromisoformat(trade_db.get('entry_time', datetime.now().isoformat()).replace('Z', '+00:00'))
+                    entry_time=datetime.fromisoformat(trade_db.get('entry_time', datetime.now().isoformat()).replace('Z', '+00:00')),
+                    mode=trade_db.get('mode', 'MOCK')
                 )
 
                 await self.add_trade_to_monitor(open_trade)
@@ -410,19 +413,18 @@ class TradeMonitor:
             await self.risk_manager.set_trade_cooldown(trade.symbol)
 
             # Notificar via Telegram
-            await self.telegram.notify_sell_order(
+            await self.telegram.notify_trade_close(
                 {
                     'symbol': trade.symbol,
                     'entry_price': trade.entry_price,
-                    'exit_price': exit_price,
                     'quantity': trade.quantity,
                     'leverage': trade.leverage,
-                    'pnl_percent': trade.pnl_percent,
-                    'pnl_usdt': trade.pnl_usdt,
-                    'exit_reason': exit_reason,
-                    'duration_seconds': (datetime.now() - trade.entry_time).total_seconds()
+                    'mode': trade.mode,
+                    'entry_time': trade.entry_time
                 },
-                self.config
+                exit_price=exit_price,
+                pnl=trade.pnl_usdt,
+                pnl_percentage=trade.pnl_percent * 100
             )
 
             # Remover do monitoramento

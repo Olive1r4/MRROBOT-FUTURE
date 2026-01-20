@@ -218,7 +218,8 @@ async def execute_trade(
             'leverage': leverage,
             'target_price': signal['take_profit'],
             'stop_loss_price': signal['stop_loss'],
-            'status': 'open'
+            'status': 'open',
+            'mode': config.MODE
         }
 
         trade_id = await db.create_trade(trade_data)
