@@ -384,6 +384,21 @@ class RiskManager:
             # Valor Nominal (Notional) = Margem * Alavancagem
             usdt_amount = margin * leverage
 
+            # CORREÇÃO CRÍTICA: Binance exige Notional >= 100 para alguns pares/contas
+            MIN_NOTIONAL = 105.0 # Margem de segurança
+
+            if usdt_amount < MIN_NOTIONAL:
+                logger.warning(f"⚠️ Valor nominal ${usdt_amount:.2f} abaixo do mínimo da Binance ($100). Tentando ajustar...")
+
+                # Verificar se temos saldo suficiente para cobrir o mínimo
+                required_margin = MIN_NOTIONAL / leverage
+
+                if required_margin <= total_capital:
+                    logger.info(f"✅ Ajustando posição para o mínimo aceito: ${MIN_NOTIONAL} (Margem: ${required_margin:.2f})")
+                    usdt_amount = MIN_NOTIONAL
+                else:
+                    logger.error(f"❌ Saldo insuficiente (${total_capital:.2f}) para atingir valor nominal mínimo de ${MIN_NOTIONAL}")
+
             logger.info(f"💰 Position Sizing Sniper ({symbol}):")
             logger.info(f"   Capital Total: ${total_capital:.2f}")
             logger.info(f"   Margem Utilizada: ${margin:.2f} ({self.config.POSITION_SIZE_PERCENT * 100:.0f}%)")
