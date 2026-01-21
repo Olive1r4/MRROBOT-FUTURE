@@ -277,10 +277,18 @@ class TradeMonitor:
             stream = f"{symbol.lower()}@miniTicker"
 
             async with self.ws_lock:
+                # Debug: verificar estado do stream
                 if stream in self.subscribed_streams:
+                    logger.debug(f"⏭️ Stream {stream} já está inscrito")
                     return
 
-                if self.ws_main and not getattr(self.ws_main, 'closed', True):
+                # Debug: verificar estado do WebSocket
+                ws_exists = self.ws_main is not None
+                ws_closed = getattr(self.ws_main, 'closed', True) if ws_exists else True
+
+                logger.info(f"🔍 DEBUG subscribe_symbol: {symbol} | WS exists: {ws_exists} | WS closed: {ws_closed}")
+
+                if self.ws_main and not ws_closed:
                     msg = {
                         "method": "SUBSCRIBE",
                         "params": [stream],
@@ -290,10 +298,10 @@ class TradeMonitor:
                     self.subscribed_streams.add(stream)
                     logger.info(f"📡 Inscrito em stream de monitoramento: {stream}")
                 else:
-                    logger.debug(f"⏳ Aguardando conexão para inscrever trade de {symbol}")
+                    logger.warning(f"⏳ WebSocket não disponível para inscrever {symbol} | exists: {ws_exists} | closed: {ws_closed}")
 
         except Exception as e:
-            logger.error(f"❌ Erro ao inscrever stream para {symbol}: {e}")
+            logger.error(f"❌ Erro ao inscrever stream para {symbol}: {e}", exc_info=True)
 
     async def remove_trade_from_monitor(self, trade_id: str):
         """Remove um trade e cancela assinatura se não houver outros para o símbolo"""
