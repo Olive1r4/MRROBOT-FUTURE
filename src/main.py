@@ -275,21 +275,21 @@ async def execute_trade(
                 'indicators': signal['indicators']
             }
 
-    except Exception as e:
-        logger.error(f"❌ Erro ao executar trade: {str(e)}", exc_info=True)
+        except Exception as e:
+            logger.error(f"❌ Erro ao executar trade: {str(e)}", exc_info=True)
 
-        db.log('ERROR', f'Erro ao executar trade: {symbol}', {
-            'error': str(e)
-        }, symbol=symbol)
+            db.log('ERROR', f'Erro ao executar trade: {symbol}', {
+                'error': str(e)
+            }, symbol=symbol)
 
-        return {
-            'success': False,
-            'message': f'Erro ao executar trade: {str(e)}'
-        }
+            return {
+                'success': False,
+                'message': f'Erro ao executar trade: {str(e)}'
+            }
 
-    finally:
-        # LIBERAR TRAVA DE ENTRADA
-        risk_manager.end_entry(symbol)
+        finally:
+            # LIBERAR TRAVA DE ENTRADA
+            risk_manager.end_entry(symbol)
 
 
 
