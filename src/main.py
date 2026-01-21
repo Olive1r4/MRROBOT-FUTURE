@@ -64,7 +64,7 @@ config = get_config()
 db = Database(config)
 exchange = ExchangeManager(config)
 signal_analyzer = SignalAnalyzer(config)
-risk_manager = RiskManager(config, db)
+risk_manager = RiskManager(config, db, exchange)
 telegram = TelegramNotifier(config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID)
 
 logger.info(f"🤖 SCALPING BOT | Mode: {config.MODE} | Target: {config.TARGET_PROFIT * 100:.2f}% | TF: {config.TIMEFRAME} | SL: {config.DAILY_STOP_LOSS * 100:.1f}%")

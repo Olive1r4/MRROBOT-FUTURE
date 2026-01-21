@@ -14,9 +14,10 @@ class RiskManager:
     Gerenciador de risco com múltiplos guardrails de segurança
     """
 
-    def __init__(self, config, database):
+    def __init__(self, config, database, exchange=None):
         self.config = config
         self.db = database
+        self.exchange = exchange
         # Cache local para rate limiting
         self.orders_in_current_minute = []
         # Controle de concorrência para entradas
@@ -50,9 +51,16 @@ class RiskManager:
             # Verificar PnL atual
             total_pnl = daily_pnl.get('total_pnl', 0)
 
-            # Assumindo que começamos com 100 USDT (ajustar conforme necessário)
-            # TODO: Pegar saldo real do exchange
-            initial_balance = 100.0
+            # Obter saldo inicial (aproximado pelo saldo atual)
+            if self.exchange:
+                try:
+                    balance = self.exchange.fetch_balance()
+                    initial_balance = float(balance['USDT']['total'])
+                except Exception as e:
+                    logger.error(f"❌ Erro ao obter saldo para Daily Stop Loss: {e}")
+                    initial_balance = 100.0 # Fallback seguro
+            else:
+                initial_balance = 100.0
             daily_loss_threshold = initial_balance * self.config.DAILY_STOP_LOSS
 
             if total_pnl < -daily_loss_threshold:
@@ -357,9 +365,18 @@ class RiskManager:
             # ALAVANCAGEM FORÇADA = 5x
             leverage = self.config.DEFAULT_LEVERAGE
 
-            # TODO: Obter saldo real do exchange
-            # Por enquanto, usar valor estimado
-            total_capital = 100.0  # Substituir por self.exchange.get_balance('USDT')
+            if self.exchange:
+                try:
+                    balance = self.exchange.fetch_balance()
+                    # Usar saldo TOTAL (Estratégia baseada na banca total)
+                    total_capital = float(balance['USDT']['total'])
+                except Exception as e:
+                    logger.error(f"❌ Erro ao obter saldo para Position Tuning: {e}")
+                    total_capital = 100.0
+            else:
+                # TODO: Obter saldo real do exchange
+                # Por enquanto, usar valor estimado
+                total_capital = 100.0
 
             # POSITION SIZING: 20% do capital como MARGEM
             margin = total_capital * self.config.POSITION_SIZE_PERCENT
