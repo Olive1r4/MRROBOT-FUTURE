@@ -175,105 +175,105 @@ async def execute_trade(
                     'indicators': scanner_indicators
                 }
                 logger.info(f"💰 Preço: ${current_price:.4f} | RSI: {scanner_indicators['rsi']:.2f} | BB: ${scanner_indicators['bb_lower']:.2f} | EMA: ${scanner_indicators['ema_200']:.2f}")
-        else:
-            # Buscar dados normalmente (webhook ou manual)
-            logger.info(f"📊 Obtendo dados de mercado de {symbol}...")
+            else:
+                # Buscar dados normalmente (webhook ou manual)
+                logger.info(f"📊 Obtendo dados de mercado de {symbol}...")
 
-            current_price = exchange.get_current_price(symbol)
-            ohlcv_data = exchange.fetch_ohlcv(symbol, config.TIMEFRAME, limit=500)
+                current_price = exchange.get_current_price(symbol)
+                ohlcv_data = exchange.fetch_ohlcv(symbol, config.TIMEFRAME, limit=500)
 
-            logger.info(f"💰 Preço atual: ${current_price:.4f}")
+                logger.info(f"💰 Preço atual: ${current_price:.4f}")
 
-            # 3. ANÁLISE TÉCNICA
-            logger.info(f"📈 Analisando indicadores técnicos...")
+                # 3. ANÁLISE TÉCNICA
+                logger.info(f"📈 Analisando indicadores técnicos...")
 
-            signal = signal_analyzer.analyze_entry_signal(symbol, ohlcv_data, current_price)
+                signal = signal_analyzer.analyze_entry_signal(symbol, ohlcv_data, current_price)
 
-            if not signal['should_enter']:
-                logger.info(f"⏸️ Sinal de entrada NÃO confirmado para {symbol}")
-                logger.info(f"   Razão: {signal['reason']}")
+                if not signal['should_enter']:
+                    logger.info(f"⏸️ Sinal de entrada NÃO confirmado para {symbol}")
+                    logger.info(f"   Razão: {signal['reason']}")
 
-                db.log('INFO', f'Sinal de entrada negado: {symbol}', {
-                    'reason': signal['reason'],
-                    'indicators': signal['indicators']
-                }, symbol=symbol)
+                    db.log('INFO', f'Sinal de entrada negado: {symbol}', {
+                        'reason': signal['reason'],
+                        'indicators': signal['indicators']
+                    }, symbol=symbol)
 
-                return {
-                    'success': False,
-                    'message': 'Sinal de entrada não confirmado',
-                    'reason': signal['reason'],
-                    'indicators': signal['indicators']
-                }
+                    return {
+                        'success': False,
+                        'message': 'Sinal de entrada não confirmado',
+                        'reason': signal['reason'],
+                        'indicators': signal['indicators']
+                    }
 
-        logger.info(f"✅ Sinal de entrada CONFIRMADO!")
+            logger.info(f"✅ Sinal de entrada CONFIRMADO!")
 
-        # 4. CALCULAR TAMANHO DA POSIÇÃO
-        usdt_amount, leverage = risk_manager.calculate_position_size(
-            symbol, current_price, coin_config
-        )
+            # 4. CALCULAR TAMANHO DA POSIÇÃO
+            usdt_amount, leverage = risk_manager.calculate_position_size(
+                symbol, current_price, coin_config
+            )
 
-        # 5. PREPARAR ORDEM
-        # O usdt_amount agora já é o Valor Nominal (Margem * Alavancagem)
-        quantity, total_value = exchange.calculate_order_size(symbol, usdt_amount, current_price)
+            # 5. PREPARAR ORDEM
+            # O usdt_amount agora já é o Valor Nominal (Margem * Alavancagem)
+            quantity, total_value = exchange.calculate_order_size(symbol, usdt_amount, current_price)
 
-        logger.info(f"💼 Preparando ordem: {quantity} {symbol} (${total_value:.2f}) | {leverage}x | TP: ${signal['take_profit']:.4f} | SL: ${signal['stop_loss']:.4f}")
+            logger.info(f"💼 Preparando ordem: {quantity} {symbol} (${total_value:.2f}) | {leverage}x | TP: ${signal['take_profit']:.4f} | SL: ${signal['stop_loss']:.4f}")
 
-        # 6. CONFIGURAR EXCHANGE
-        exchange.set_leverage(symbol, leverage)
-        exchange.set_margin_mode(symbol, 'isolated')
+            # 6. CONFIGURAR EXCHANGE
+            exchange.set_leverage(symbol, leverage)
+            exchange.set_margin_mode(symbol, 'isolated')
 
-        # 7. EXECUTAR ORDEM DE ENTRADA
-        logger.info(f"🔄 Executando ordem de compra...")
+            # 7. EXECUTAR ORDEM DE ENTRADA
+            logger.info(f"🔄 Executando ordem de compra...")
 
-        order_entry = exchange.create_market_buy_order(symbol, quantity, current_price)
+            order_entry = exchange.create_market_buy_order(symbol, quantity, current_price)
 
-        # Registrar no rate limiter
-        risk_manager.register_order()
+            # Registrar no rate limiter
+            risk_manager.register_order()
 
-        # 8. SALVAR NO BANCO DE DADOS
-        # Campos necessários para o bot funcionar e monitorar
-        trade_data = {
-            'symbol': symbol,
-            'side': 'buy',
-            'entry_price': current_price,
-            'quantity': quantity,
-            'leverage': leverage,
-            'target_price': signal['take_profit'],
-            'stop_loss_price': signal['stop_loss'],
-            'status': 'open',
-            'mode': config.MODE
-        }
+            # 8. SALVAR NO BANCO DE DADOS
+            # Campos necessários para o bot funcionar e monitorar
+            trade_data = {
+                'symbol': symbol,
+                'side': 'buy',
+                'entry_price': current_price,
+                'quantity': quantity,
+                'leverage': leverage,
+                'target_price': signal['take_profit'],
+                'stop_loss_price': signal['stop_loss'],
+                'status': 'open',
+                'mode': config.MODE
+            }
 
-        trade_id = db.create_trade(trade_data)
+            trade_id = db.create_trade(trade_data)
 
-        logger.info(f"✅ Trade criado com ID: {trade_id}")
+            logger.info(f"✅ Trade criado com ID: {trade_id}")
 
-        db.log('INFO', f'Trade aberto: {symbol}', {
-            'trade_id': trade_id,
-            'entry_price': current_price,
-            'quantity': quantity,
-            'indicators': signal['indicators']
-        }, symbol=symbol, trade_id=trade_id)
+            db.log('INFO', f'Trade aberto: {symbol}', {
+                'trade_id': trade_id,
+                'entry_price': current_price,
+                'quantity': quantity,
+                'indicators': signal['indicators']
+            }, symbol=symbol, trade_id=trade_id)
 
-        # Notificar abertura via Telegram
-        await telegram.notify_trade_open(trade_data, signal)
+            # Notificar abertura via Telegram
+            await telegram.notify_trade_open(trade_data, signal)
 
-        logger.info(f"✅ TRADE EXECUTADO COM SUCESSO! ID: {trade_id}")
+            logger.info(f"✅ TRADE EXECUTADO COM SUCESSO! ID: {trade_id}")
 
-        # 9. O TRADE MONITOR (em background) irá detectar este novo trade
-        # automaticamente em até 5 segundos via banco de dados.
+            # 9. O TRADE MONITOR (em background) irá detectar este novo trade
+            # automaticamente em até 5 segundos via banco de dados.
 
-        return {
-            'success': True,
-            'message': 'Trade executado com sucesso',
-            'trade_id': trade_id,
-            'symbol': symbol,
-            'entry_price': current_price,
-            'quantity': quantity,
-            'target_price': signal['take_profit'],
-            'stop_loss': signal['stop_loss'],
-            'indicators': signal['indicators']
-        }
+            return {
+                'success': True,
+                'message': 'Trade executado com sucesso',
+                'trade_id': trade_id,
+                'symbol': symbol,
+                'entry_price': current_price,
+                'quantity': quantity,
+                'target_price': signal['take_profit'],
+                'stop_loss': signal['stop_loss'],
+                'indicators': signal['indicators']
+            }
 
     except Exception as e:
         logger.error(f"❌ Erro ao executar trade: {str(e)}", exc_info=True)
