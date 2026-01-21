@@ -19,6 +19,8 @@ class RiskManager:
         self.db = database
         # Cache local para rate limiting
         self.orders_in_current_minute = []
+        # Controle de concorrência para entradas
+        self.active_entries = set()
         logger.info(f"   📉 Daily Stop Loss: {self.config.DAILY_STOP_LOSS * 100:.1f}%")
         logger.info(f"   🔢 Max Open Trades: {self.config.MAX_OPEN_TRADES}")
         logger.info(f"   ⏱️ Trade Cooldown: {self.config.TRADE_COOLDOWN_SECONDS}s")
@@ -87,10 +89,16 @@ class RiskManager:
 
             # 1. Verificar se já existe trade aberto para ESTE símbolo
             if symbol:
+                # Verificar se já existe no DB
                 for trade in open_trades:
                     if trade['symbol'] == symbol:
                         logger.warning(f"⚠️ Já existe um trade aberto para {symbol}")
                         return False, f"Trade já aberto para {symbol}"
+
+                # Verificar se já está em processo de abertura (race condition protection)
+                if symbol in self.active_entries:
+                    logger.warning(f"⚠️ Trade para {symbol} já está em processo de abertura")
+                    return False, f"Abertura em progresso para {symbol}"
 
             # 2. Verificar limite global
             if open_count >= self.config.MAX_OPEN_TRADES:
@@ -131,7 +139,7 @@ class RiskManager:
 
             # Converter para datetime se for string
             if isinstance(cooldown_until, str):
-                cooldown_until = datetime.fromisoformat(cooldown_until.replace('Z', '+00:00'))
+                cooldown_until = datetime.fromisoformat(self._fix_isoformat(cooldown_until.replace('Z', '+00:00')))
 
             if now < cooldown_until:
                 remaining_seconds = (cooldown_until - now).total_seconds()
@@ -158,6 +166,37 @@ class RiskManager:
             cooldown_until = now + timedelta(seconds=self.config.TRADE_COOLDOWN_SECONDS)
 
             self.db.set_trade_cooldown(symbol, now, cooldown_until)
+        except Exception as e:
+            logger.error(f"❌ Erro ao definir cooldown: {e}")
+
+    def _fix_isoformat(self, timestamp_str: str) -> str:
+        """
+        Garante que a string ISO tenha precision compatível com Python 3.10 (3 ou 6 dígitos).
+        """
+        if not timestamp_str or not isinstance(timestamp_str, str):
+            return timestamp_str
+        if '.' not in timestamp_str:
+            return timestamp_str
+        try:
+            main_part, sub_part = timestamp_str.split('.', 1)
+            offset_idx = -1
+            for i, char in enumerate(sub_part):
+                if char in ('Z', '+', '-'):
+                    offset_idx = i
+                    break
+            if offset_idx == -1:
+                fraction = sub_part
+                offset = ""
+            else:
+                fraction = sub_part[:offset_idx]
+                offset = sub_part[offset_idx:]
+            if len(fraction) > 6:
+                fraction = fraction[:6]
+            elif len(fraction) < 6:
+                fraction = fraction.ljust(6, '0')
+            return f"{main_part}.{fraction}{offset}"
+        except:
+            return timestamp_str
 
             logger.info(f"⏱️ Cooldown definido para {symbol} até {cooldown_until.strftime('%H:%M:%S')}")
 
@@ -202,6 +241,17 @@ class RiskManager:
             logger.debug(f"📝 Ordem registrada no rate limiter")
         except Exception as e:
             logger.error(f"❌ Erro ao registrar ordem: {str(e)}")
+
+    def start_entry(self, symbol: str):
+        """Marca um símbolo como em processo de entrada"""
+        self.active_entries.add(symbol)
+        logger.info(f"🔒 Bloqueando novas entradas para {symbol} (inicializando...)")
+
+    def end_entry(self, symbol: str):
+        """Libera um símbolo após processo de entrada"""
+        if symbol in self.active_entries:
+            self.active_entries.remove(symbol)
+            logger.info(f"🔓 Liberando cooldown de entrada para {symbol}")
 
     def check_symbol_is_active(self, symbol: str) -> Tuple[bool, str, Optional[Dict]]:
         """

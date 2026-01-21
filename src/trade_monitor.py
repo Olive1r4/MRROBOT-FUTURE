@@ -25,10 +25,11 @@ class OpenTrade:
     stop_loss_price: float
     entry_time: datetime
     last_price: float = 0.0
-    last_update: datetime = field(default_factory=datetime.now)
+    last_update: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     pnl_percent: float = 0.0
     pnl_usdt: float = 0.0
     mode: str = "MOCK"
+    is_closing: bool = False
 
     def update_pnl(self, current_price: float, trading_fee: float = 0.0004):
         """
@@ -258,7 +259,8 @@ class TradeMonitor:
         """
         try:
             symbol = trade.symbol
-            self.open_trades[trade.trade_id] = trade
+            async with self.trades_lock:
+                self.open_trades[trade.trade_id] = trade
 
             logger.info(f"🔭 MONITORANDO: {symbol} (ID: {trade.trade_id}) | Entrada: ${trade.entry_price:.2f} | TP: ${trade.target_price:.2f} | SL: ${trade.stop_loss_price:.2f} | Qtd: {trade.quantity:.4f}")
 
@@ -298,9 +300,12 @@ class TradeMonitor:
             if trade_id not in self.open_trades:
                 return
 
-            trade = self.open_trades[trade_id]
-            symbol = trade.symbol
-            del self.open_trades[trade_id]
+            async with self.trades_lock:
+                if trade_id not in self.open_trades:
+                    return
+                trade = self.open_trades[trade_id]
+                symbol = trade.symbol
+                del self.open_trades[trade_id]
 
             logger.info(f"✅ Trade {trade_id} removido do monitoramento")
 
@@ -393,53 +398,57 @@ class TradeMonitor:
     async def process_price_tick(self, symbol: str, current_price: float):
         """
         Processa um tick de preço INSTANTANEAMENTE
-
-        CRITICAL:
-        - Roda A CADA TICK (milissegundos)
-        - Não espera vela fechar
-        - Fecha trade IMEDIATAMENTE quando atinge target/stop
         """
         try:
-            # Buscar todos os trades deste símbolo
-            trades_to_check = [
-                trade for trade in self.open_trades.values()
-                if trade.symbol == symbol
-            ]
+            trades_to_close = []
 
-            if not trades_to_check:
-                return
+            async with self.trades_lock:
+                # Buscar todos os trades deste símbolo
+                trades_to_check = [
+                    trade for trade in self.open_trades.values()
+                    if trade.symbol == symbol and not trade.is_closing
+                ]
 
-            for trade in trades_to_check:
-                # Atualizar PnL
-                trade.update_pnl(current_price, self.config.TRADING_FEE)
+                if not trades_to_check:
+                    return
 
-                # Log a cada 10s (para não poluir)
                 now = datetime.now(timezone.utc)
-                last_log = self.last_log_time.get(trade.trade_id, datetime.min.replace(tzinfo=timezone.utc))
-                if (now - last_log).total_seconds() >= 10:
-                    self.last_log_time[trade.trade_id] = now
-                    logger.info(f"📊 {symbol}: ${current_price:.4f} | PnL: {trade.pnl_percent * 100:+.3f}% (Target: ${trade.target_price:.4f})")
 
-                # VERIFICAR TIME-EXIT (45 minutos)
-                duration_minutes = (now - trade.entry_time).total_seconds() / 60
-                if duration_minutes >= 45:
-                    # Fechar se estiver próximo de zero (entre -0.1% e +0.1%)
-                    if abs(trade.pnl_percent) <= 0.001:
-                        logger.info(f"⏳ TIME-EXIT: {symbol} atingiu {duration_minutes:.1f} min com PnL neutro ({trade.pnl_percent*100:+.2f}%). Fechando...")
-                        await self.close_trade(trade, current_price, "TIME_EXIT")
-                        continue
+                for trade in trades_to_check:
+                    # Atualizar PnL
+                    trade.update_pnl(current_price, self.config.TRADING_FEE)
 
-                # VERIFICAR TAKE PROFIT
-                if trade.should_take_profit(self.config.TARGET_PROFIT_NET):
-                    logger.info(f"🎯 TAKE PROFIT: {symbol} | Entrada: ${trade.entry_price:.2f} -> Saída: ${current_price:.2f} | PnL: {trade.pnl_percent * 100:+.2f}% (ID: {trade.trade_id})")
+                    # Log a cada 10s
+                    last_log = self.last_log_time.get(trade.trade_id, datetime.min.replace(tzinfo=timezone.utc))
+                    if (now - last_log).total_seconds() >= 10:
+                        self.last_log_time[trade.trade_id] = now
+                        logger.info(f"📊 {symbol}: ${current_price:.4f} | PnL: {trade.pnl_percent * 100:+.3f}% (Target: ${trade.target_price:.4f})")
 
-                    await self.close_trade(trade, current_price, "TAKE_PROFIT")
+                    # VERIFICAR TIME-EXIT (45 minutos)
+                    duration_minutes = (now - trade.entry_time).total_seconds() / 60
+                    if duration_minutes >= 45:
+                        if abs(trade.pnl_percent) <= 0.001:
+                            logger.info(f"⏳ TIME-EXIT TRIGGER: {symbol} atingiu {duration_minutes:.1f} min com PnL neutro ({trade.pnl_percent*100:+.2f}%).")
+                            trade.is_closing = True
+                            trades_to_close.append((trade, "TIME_EXIT"))
+                            continue
 
-                # VERIFICAR STOP LOSS
-                elif trade.should_stop_loss(self.config.STOP_LOSS_PERCENTAGE):
-                    logger.warning(f"🛑 STOP LOSS: {symbol} | Entrada: ${trade.entry_price:.2f} -> Saída: ${current_price:.2f} | PnL: {trade.pnl_percent * 100:+.2f}% (ID: {trade.trade_id})")
+                    # VERIFICAR TAKE PROFIT
+                    if trade.should_take_profit(self.config.TARGET_PROFIT_NET):
+                        logger.info(f"🎯 TAKE PROFIT TRIGGER: {symbol} | PnL: {trade.pnl_percent * 100:+.2f}% (ID: {trade.trade_id})")
+                        trade.is_closing = True
+                        trades_to_close.append((trade, "TAKE_PROFIT"))
 
-                    await self.close_trade(trade, current_price, "STOP_LOSS")
+                    # VERIFICAR STOP LOSS
+                    elif trade.should_stop_loss(self.config.STOP_LOSS_PERCENTAGE):
+                        logger.warning(f"🛑 STOP LOSS TRIGGER: {symbol} | PnL: {trade.pnl_percent * 100:+.2f}% (ID: {trade.trade_id})")
+                        trade.is_closing = True
+                        trades_to_close.append((trade, "STOP_LOSS"))
+
+            # EXECUTAR FECHAMENTOS FORA DO LOCK
+            for trade, reason in trades_to_close:
+                # Criar task para não bloquear o loop de ticks
+                asyncio.create_task(self.close_trade(trade, current_price, reason))
 
         except Exception as e:
             logger.error(f"❌ Erro ao processar tick de {symbol}: {e}")

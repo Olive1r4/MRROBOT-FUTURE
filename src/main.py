@@ -158,8 +158,13 @@ async def execute_trade(
 
         coin_config = validation['coin_config']
 
-        # 2. OBTER DADOS DO MERCADO (ou usar do scanner)
-        if scanner_validated and scanner_price and scanner_indicators:
+        # 2. BLOQUEAR ENTRADAS PARALELAS PARA ESTE SÍMBOLO
+        risk_manager.start_entry(symbol)
+
+        try:
+            # 3. OBTER DADOS DO MERCADO (ou usar do scanner)
+            if scanner_validated and scanner_price and scanner_indicators:
+                # ...
             # Usar dados já validados pelo scanner
             logger.info(f"📊 Usando dados pré-validados do scanner")
             current_price = scanner_price
@@ -282,6 +287,10 @@ async def execute_trade(
             'success': False,
             'message': f'Erro ao executar trade: {str(e)}'
         }
+
+    finally:
+        # LIBERAR TRAVA DE ENTRADA
+        risk_manager.end_entry(symbol)
 
 
 
