@@ -377,7 +377,7 @@ class TradeMonitor:
 
                     # Log de reconexão bem-sucedida
                     if reconnect_attempts > 0:
-                        logger.info(f\"✅ WebSocket RECONECTADO com sucesso após {reconnect_attempts} tentativa(s)!\")
+                        logger.info(f"✅ WebSocket RECONECTADO com sucesso após {reconnect_attempts} tentativa(s)!")
 
                     reconnect_attempts = 0
 
