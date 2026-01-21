@@ -339,7 +339,7 @@ class MarketScanner:
 
                 state.candles.append(candle)
                 state.current_price = candle[4]
-                state.last_update = datetime.now()
+                state.last_update = datetime.now(timezone.utc)
 
                 # logger.info(f"🕐 {symbol}: Vela fechada @ ${candle[4]:.2f}")
 
@@ -517,7 +517,7 @@ class MarketScanner:
                 logger.warning(f"   Razão: {result.get('reason', 'N/A')}")
 
                 # Adicionar cooldown de 60s se falhou
-                self.blocked_until[symbol] = datetime.now() + timedelta(seconds=60)
+                self.blocked_until[symbol] = datetime.now(timezone.utc) + timedelta(seconds=60)
                 logger.info(f"⏰ Cooldown de 60s ativado para {symbol}")
 
         except Exception as e:

@@ -39,7 +39,7 @@ class OpenTrade:
             trading_fee: Taxa de trading (0.04%)
         """
         self.last_price = current_price
-        self.last_update = datetime.now()
+        self.last_update = datetime.now(timezone.utc)
 
         # Calcular PnL percentual BRUTO
         pnl_percent_gross = (current_price - self.entry_price) / self.entry_price
@@ -150,7 +150,7 @@ class TradeMonitor:
 
             for trade_db in open_trades_db:
                 # Tratar string de tempo (Supabase pode enviar mais de 6 casas decimais)
-                entry_time_str = self._fix_isoformat(trade_db.get('entry_time', datetime.now().isoformat()))
+                entry_time_str = self._fix_isoformat(trade_db.get('entry_time', datetime.now(timezone.utc).isoformat()))
 
                 # Converter para OpenTrade com segurança
                 open_trade = OpenTrade(
@@ -192,7 +192,7 @@ class TradeMonitor:
                 logger.info(f"🆕 Novo trade detectado: {trade_id}")
 
                 # Tratar string de tempo (Supabase pode enviar mais de 6 casas decimais)
-                entry_time_str = self._fix_isoformat(trade_db.get('entry_time', datetime.now().isoformat()))
+                entry_time_str = self._fix_isoformat(trade_db.get('entry_time', datetime.now(timezone.utc).isoformat()))
 
                 open_trade = OpenTrade(
                     trade_id=trade_id,
@@ -488,7 +488,7 @@ class TradeMonitor:
             )
 
             # Atualizar PnL diário
-            self.db.update_daily_pnl(datetime.now().date(), trade.pnl_usdt)
+            self.db.update_daily_pnl(datetime.now(timezone.utc).date(), trade.pnl_usdt)
 
             # Definir cooldown para o símbolo
             self.risk_manager.set_trade_cooldown(trade.symbol)

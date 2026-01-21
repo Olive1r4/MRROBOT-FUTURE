@@ -5,7 +5,7 @@ import httpx
 import logging
 import html
 from typing import Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ class TelegramNotifier:
     "Ordens serão SIMULADAS" if config.MODE == "MOCK" else "⚠️ ORDENS REAIS SERÃO EXECUTADAS!"
 }
 
-⏰ <i>{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>
+⏰ <i>{datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M:%S')}</i>
 """
 
         await self.send_message(message.strip())
@@ -133,7 +133,7 @@ class TelegramNotifier:
 
 {mode_emoji} <i>{"Ordem SIMULADA" if mode == "MOCK" else "Ordem REAL"}</i>
 
-⏰ <i>{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>
+⏰ <i>{datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M:%S')}</i>
 """
 
         await self.send_message(message.strip())
@@ -173,7 +173,7 @@ class TelegramNotifier:
                     entry_dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
                 else:
                     entry_dt = entry_time
-                duration_minutes = (datetime.now() - entry_dt.replace(tzinfo=None)).total_seconds() / 60
+                duration_minutes = (datetime.now(timezone.utc) - entry_dt).total_seconds() / 60
                 duration = f"{int(duration_minutes)} min"
             except:
                 pass
@@ -199,7 +199,7 @@ class TelegramNotifier:
 
 {mode_emoji} <i>{"Ordem SIMULADA" if mode == "MOCK" else "Ordem REAL"}</i>
 
-⏰ <i>{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>
+⏰ <i>{datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M:%S')}</i>
 """
 
         await self.send_message(message.strip())
@@ -219,7 +219,7 @@ class TelegramNotifier:
 
 🚫 <b>Trading bloqueado até amanhã!</b>
 
-⏰ <i>{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>
+⏰ <i>{datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M:%S')}</i>
 """
 
         await self.send_message(message.strip())
@@ -238,7 +238,7 @@ class TelegramNotifier:
         if details:
             message += f"\n📝 <b>Detalhes:</b> {details}"
 
-        message += f"\n\n⏰ <i>{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>"
+        message += f"\n\n⏰ <i>{datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M:%S')}</i>"
 
         await self.send_message(message.strip())
 
@@ -266,7 +266,7 @@ class TelegramNotifier:
   • Perdas: {losing_trades} ❌
   • Win Rate: {win_rate:.1f}%
 
-⏰ <i>{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>
+⏰ <i>{datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M:%S')}</i>
 """
 
         await self.send_message(message.strip())
