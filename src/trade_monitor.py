@@ -125,20 +125,10 @@ class TradeMonitor:
         logger.info("🔌 Iniciando WebSocket Multi-Stream...")
         self.monitor_task = asyncio.create_task(self.monitor_multi_stream())
 
-        # Aguardar WebSocket conectar (com verificação)
-        logger.info("⏳ Aguardando WebSocket conectar...")
-        max_wait = 10  # Máximo 10 segundos
-        waited = 0
-        while waited < max_wait:
-            await asyncio.sleep(1)
-            waited += 1
-
-            # Verificar se WebSocket está conectado
-            if self.ws_main and not getattr(self.ws_main, 'closed', True):
-                logger.info(f"✅ WebSocket conectado após {waited}s")
-                break
-        else:
-            logger.warning(f"⚠️ WebSocket não conectou após {max_wait}s, continuando mesmo assim...")
+        # Aguardar WebSocket conectar em background
+        # O WebSocket conecta assincronamente dentro do async with block
+        logger.info("⏳ Aguardando 3s para WebSocket conectar em background...")
+        await asyncio.sleep(3)
 
         # Agora carregar trades abertos do banco (com WebSocket já disponível)
         await self.load_open_trades_from_db()
