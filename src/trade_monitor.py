@@ -120,11 +120,16 @@ class TradeMonitor:
         logger.info(f"🚀 TRADE MONITOR START | TP: +{self.config.TARGET_PROFIT_NET * 100:.2f}% | SL: -{self.config.STOP_LOSS_PERCENTAGE * 100:.2f}%")
         logger.info("=" * 60)
 
-        # Carregar trades abertos do banco ao iniciar
-        await self.load_open_trades_from_db()
-
-        # Iniciar conexão WebSocket Multi-Stream em background
+        # CRITICAL FIX: Iniciar WebSocket ANTES de carregar trades
+        # Isso garante que self.ws_main esteja disponível quando subscribe_symbol for chamado
+        logger.info("🔌 Iniciando WebSocket Multi-Stream...")
         self.monitor_task = asyncio.create_task(self.monitor_multi_stream())
+
+        # Aguardar um pouco para o WebSocket conectar
+        await asyncio.sleep(2)
+
+        # Agora carregar trades abertos do banco (com WebSocket já disponível)
+        await self.load_open_trades_from_db()
 
         # Loop principal de monitoramento
         while self.is_running:
@@ -138,6 +143,7 @@ class TradeMonitor:
             except Exception as e:
                 logger.error(f"❌ Erro no loop principal do monitor: {e}")
                 await asyncio.sleep(5)
+
 
     async def load_open_trades_from_db(self):
         """Carrega trades abertos do banco de dados ao iniciar"""
