@@ -17,9 +17,7 @@ class Config:
     SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
     # Strategy
-    SYMBOL = os.getenv('SYMBOL', 'BTC/USDT')
     TIMEFRAME = os.getenv('TIMEFRAME', '4h')
-    LEVERAGE = int(os.getenv('LEVERAGE', 5))
     INITIAL_PAPER_BALANCE = float(os.getenv('INITIAL_PAPER_BALANCE', 90.0))
 
     @staticmethod

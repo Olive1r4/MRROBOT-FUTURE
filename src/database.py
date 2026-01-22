@@ -64,3 +64,16 @@ class Database:
         except Exception as e:
             logging.error(f"Error fetching paper balance: {e}")
             return None
+
+    def get_active_markets(self):
+        """Fetch all active markets from settings."""
+        try:
+            db = self.get_client()
+            response = db.table('market_settings')\
+                .select('*')\
+                .eq('is_active', True)\
+                .execute()
+            return response.data if response.data else []
+        except Exception as e:
+            logging.error(f"Error fetching active markets: {e}")
+            return []

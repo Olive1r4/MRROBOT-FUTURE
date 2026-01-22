@@ -48,22 +48,22 @@ class Exchange:
     async def close(self):
         await self.client.close()
 
-    async def get_candles(self, limit=100):
+    async def get_candles(self, symbol, limit=100):
         """ALWAYS fetch real market data."""
         try:
-            ohlcv = await self.client.fetch_ohlcv(self.symbol, self.timeframe, limit=limit)
+            ohlcv = await self.client.fetch_ohlcv(symbol, self.timeframe, limit=limit)
             return ohlcv
         except Exception as e:
-            logging.error(f"Error fetching candles: {e}")
+            logging.error(f"Error fetching candles for {symbol}: {e}")
             return None
 
-    async def get_current_price(self):
+    async def get_current_price(self, symbol):
         """ALWAYS fetch real market price."""
         try:
-            ticker = await self.client.fetch_ticker(self.symbol)
+            ticker = await self.client.fetch_ticker(symbol)
             return ticker['last']
         except Exception as e:
-            logging.error(f"Error fetching price: {e}")
+            logging.error(f"Error fetching price for {symbol}: {e}")
             return None
 
     async def get_balance(self):
@@ -82,20 +82,24 @@ class Exchange:
             # Paper Mode
             return {'free': self.paper_balance, 'total': self.paper_balance}
 
-    async def create_order(self, side, amount):
+    async def set_leverage(self, leverage, symbol):
+        """Set leverage for symbol."""
+        try:
+            await self.client.set_leverage(leverage, symbol)
+        except Exception as e:
+            logging.error(f"Error setting leverage for {symbol}: {e}")
+
+    async def create_order(self, symbol, side, amount):
         """Hybrid Order Execution."""
-        current_price = await self.get_current_price()
+        current_price = await self.get_current_price(symbol)
         if not current_price:
             logging.error("Cannot create order: Failed to get price.")
             return None
 
         if self.mode == 'LIVE':
             try:
-                # Set leverage first just in case
-                await self.client.set_leverage(Config.LEVERAGE, self.symbol)
-
                 order = await self.client.create_order(
-                    symbol=self.symbol,
+                    symbol=symbol,
                     type='MARKET',
                     side=side.lower(),
                     amount=amount
@@ -106,12 +110,12 @@ class Exchange:
                 return None
         else:
             # Paper Mode Simulation
-            logging.info(f"PAPER EXECUTION: {side} {amount} {self.symbol} @ {current_price}")
+            logging.info(f"PAPER EXECUTION: {side} {amount} {symbol} @ {current_price}")
 
             # Create a fake order object structure similar to CCXT
             fake_order = {
                 'id': f'paper_{int(datetime.now().timestamp())}',
-                'symbol': self.symbol,
+                'symbol': symbol,
                 'side': side.lower(),
                 'type': 'market',
                 'amount': amount,
@@ -134,7 +138,7 @@ class Exchange:
             })
             logging.info(f"Updated PAPER Balance: ${self.paper_balance:.2f}")
 
-    def calculate_position_size(self, balance, price):
+    def calculate_position_size(self, balance, price, leverage=5):
         """Calculate amount based on 100% bank rule and leverage."""
         # Cost = (Price * Amount) / Leverage
         # We want Cost = Balance
@@ -143,6 +147,6 @@ class Exchange:
 
         # Apply a small safety buffer (e.g. 98% to avoid Insufficient Margin)
         usable_balance = balance * 0.98
-        notional_value = usable_balance * Config.LEVERAGE
+        notional_value = usable_balance * leverage
         amount = notional_value / price
         return amount

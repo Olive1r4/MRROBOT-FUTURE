@@ -30,71 +30,111 @@ class MrRobotTrade:
                 .select('*')\
                 .eq('status', 'OPEN')\
                 .eq('mode', Config.TRADING_MODE)\
-                .eq('symbol', Config.SYMBOL)\
                 .limit(1)\
                 .execute()
 
             if response.data and len(response.data) > 0:
                 self.current_trade = response.data[0]
-                logging.info(f"Resumed OPEN trade: {self.current_trade['id']} - Entry: {self.current_trade['entry_price']}")
+                # Try to fetch settings for this symbol
+                try:
+                    settings_res = client.table('market_settings').select('*').eq('symbol', self.current_trade['symbol']).execute()
+                    if settings_res.data:
+                        self.current_trade['market_settings'] = settings_res.data[0]
+                except:
+                    pass
+                logging.info(f"Resumed OPEN trade: {self.current_trade['id']} ({self.current_trade['symbol']})")
         except Exception as e:
             logging.error(f"Error loading open trades: {e}")
 
     async def run(self):
-        logging.info(f"Starting MrRobot Trade [{Config.TRADING_MODE}] on {Config.SYMBOL}")
+        logging.info(f"Starting MrRobot Trade [{Config.TRADING_MODE}]")
 
         while self.running:
             try:
-                # 1. Fetch Data
-                candles = await self.exchange.get_candles()
-                if not candles:
-                    await asyncio.sleep(60)
-                    continue
-
-                df = self.strategy.parse_data(candles)
-                df = self.strategy.calculate_indicators(df)
-
-                current_price = await self.exchange.get_current_price()
-
-                # 2. Manage Position
+                # 1. Manage Existing Trade (Global Single Trade Rule)
                 if self.current_trade:
+                    # Fetch data only for the active symbol
+                    symbol = self.current_trade['symbol']
+                    candles = await self.exchange.get_candles(symbol) # Pass symbol
+                    if not candles:
+                        await asyncio.sleep(10)
+                        continue
+
+                    current_price = await self.exchange.get_current_price(symbol) # Pass symbol
+                    df = self.strategy.parse_data(candles)
+                    df = self.strategy.calculate_indicators(df)
+
                     await self.manage_trade(df, current_price)
+
                 else:
-                    await self.look_for_entry(df, current_price)
+                    # 2. Scanning Mode (No switch active)
+                    active_markets = self.db.get_active_markets()
+                    if not active_markets:
+                        logging.warning("No active markets found in DB.")
+                        await asyncio.sleep(60)
+                        continue
+
+                    for market in active_markets:
+                        symbol = market['symbol']
+                        # Fetch Data
+                        candles = await self.exchange.get_candles(symbol)
+                        if not candles:
+                            continue
+
+                        df = self.strategy.parse_data(candles)
+                        df = self.strategy.calculate_indicators(df)
+                        current_price = await self.exchange.get_current_price(symbol)
+
+                        # Check Entry
+                        entered = await self.look_for_entry(df, current_price, market)
+
+                        if entered:
+                            # SINGLE TRADE RULE: Stop scanning once we enter a trade
+                            break
+
+                        # Small delay between symbols to avoid rate limits
+                        await asyncio.sleep(1)
 
                 # Wait before next cycle
-                # 4H candles don't change often, but we check price for SL/TP frequently
                 await asyncio.sleep(60)
 
             except Exception as e:
                 logging.error(f"Main Loop Error: {e}")
+                import traceback
+                traceback.print_exc()
                 await asyncio.sleep(60)
 
-    async def look_for_entry(self, df, current_price):
+    async def look_for_entry(self, df, current_price, market_settings):
         signal, data = self.strategy.check_signal(df)
+        symbol = market_settings['symbol']
 
         if signal == "LONG":
-            logging.info(f"SIGNAL DETECTED: {signal} at {current_price}")
+            logging.info(f"SIGNAL DETECTED ({symbol}): {signal} at {current_price}")
 
             # 1. Calculate Size
             balance_info = await self.exchange.get_balance()
-            # For Paper Mode, we use 'free' which holds the tracked balance
-            # For Live Mode, we also use 'free' USDT
             available_balance = float(balance_info['free'])
 
-            if available_balance < 10: # Minimum check
+            if available_balance < 10:
                 logging.warning(f"Insufficient balance: {available_balance}")
-                return
+                return False
 
-            amount = self.exchange.calculate_position_size(available_balance, current_price)
+            # Use dynamic leverage from market settings
+            leverage = int(market_settings.get('leverage', 5))
+
+            # Update Exchange to use this leverage (Live Mode)
+            if Config.TRADING_MODE == 'LIVE':
+                 await self.exchange.set_leverage(leverage, symbol)
+
+            amount = self.exchange.calculate_position_size(available_balance, current_price, leverage)
 
             # 2. Execute Order
-            order = await self.exchange.create_order(signal, amount)
+            order = await self.exchange.create_order(symbol, signal, amount)
 
             if order:
                 # 3. Log to DB
                 trade_record = {
-                    'symbol': Config.SYMBOL,
+                    'symbol': symbol,
                     'side': signal,
                     'entry_price': float(order['average']),
                     'amount': float(order['amount']),
@@ -107,21 +147,32 @@ class MrRobotTrade:
                 res = self.db.log_trade(trade_record)
                 if res and res.data:
                     self.current_trade = res.data[0]
-                    logging.info(f"Trade OPENED: {self.current_trade['id']}")
+                    # Inject market settings into current_trade dict for management usage (e.g. Stop Loss)
+                    self.current_trade['market_settings'] = market_settings
+                    logging.info(f"Trade OPENED ({symbol}): {self.current_trade['id']}")
+                    return True # Signal that we entered
+        return False
 
     async def manage_trade(self, df, current_price):
         # 1. Check Technical Exit
         should_exit, reason = self.strategy.check_exit(df, self.current_trade['side'])
 
-        # 2. Check Stop Loss (Fixed 5%)
+        # 2. Check Stop Loss (Dynamic)
         entry_price = float(self.current_trade['entry_price'])
-        # Long PnL % = (Current - Entry) / Entry
         pnl_pct = (current_price - entry_price) / entry_price
 
+        # Retrieve SL from settings or default 5%
+        # Note: current_trade might not have 'market_settings' if loaded from DB freshly.
+        # Ideally we fetch it, but for simplicity let's assume default or simple query if missing.
+        stop_loss_pct = 0.05
+        # If we had the settings loaded:
+        if 'market_settings' in self.current_trade:
+             stop_loss_pct = float(self.current_trade['market_settings'].get('stop_loss_percent', 0.05))
+
         # SL condition for LONG
-        if pnl_pct <= -0.05:
+        if pnl_pct <= -stop_loss_pct:
             should_exit = True
-            reason = "Stop Loss (-5%)"
+            reason = f"Stop Loss (-{stop_loss_pct*100}%)"
 
         if should_exit:
             await self.close_trade(reason, current_price)
@@ -130,12 +181,11 @@ class MrRobotTrade:
         logging.info(f"Closing trade. Reason: {reason} | Price: {current_price}")
 
         # 1. Execute Close Order
-        # Sell the same amount we bought
         amount = float(self.current_trade['amount'])
-        # If LONG, we SELL to close
         side = 'SELL' if self.current_trade['side'] == 'LONG' else 'BUY'
+        symbol = self.current_trade['symbol']
 
-        order = await self.exchange.create_order(side, amount)
+        order = await self.exchange.create_order(symbol, side, amount)
 
         if order:
             # 2. Calculate Realized PnL
