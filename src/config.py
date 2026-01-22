@@ -16,6 +16,10 @@ class Config:
     SUPABASE_URL = os.getenv('SUPABASE_URL')
     SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
+    # Telegram
+    TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+    TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+
     # Strategy
     TIMEFRAME = os.getenv('TIMEFRAME', '4h')
     INITIAL_PAPER_BALANCE = float(os.getenv('INITIAL_PAPER_BALANCE', 90.0))

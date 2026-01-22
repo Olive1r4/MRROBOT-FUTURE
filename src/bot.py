@@ -4,6 +4,8 @@ from src.config import Config
 from src.exchange import Exchange
 from src.database import Database
 from src.strategy import Strategy
+from telegram import Bot
+from telegram.error import TelegramError
 
 # Configure Logging
 logging.basicConfig(
@@ -18,9 +20,21 @@ class MrRobotTrade:
         self.strategy = Strategy()
         self.running = True
         self.current_trade = None
+        self.tg_bot = None
+
+        if Config.TELEGRAM_BOT_TOKEN:
+            self.tg_bot = Bot(token=Config.TELEGRAM_BOT_TOKEN)
 
         # Load any existing OPEN trade from DB
         self._load_open_trade()
+
+    async def send_notification(self, message):
+        """Send message to Telegram."""
+        if self.tg_bot and Config.TELEGRAM_CHAT_ID:
+            try:
+                await self.tg_bot.send_message(chat_id=Config.TELEGRAM_CHAT_ID, text=message)
+            except TelegramError as e:
+                logging.error(f"Telegram Error: {e}")
 
     def _load_open_trade(self):
         """Recover state from DB."""
@@ -47,7 +61,9 @@ class MrRobotTrade:
             logging.error(f"Error loading open trades: {e}")
 
     async def run(self):
+        start_msg = f"🚀 **MrRobot Trade Started**\nMode: `{Config.TRADING_MODE}`\nSymbol check: Active Settings"
         logging.info(f"Starting MrRobot Trade [{Config.TRADING_MODE}]")
+        await self.send_notification(start_msg)
 
         while self.running:
             try:
@@ -150,6 +166,17 @@ class MrRobotTrade:
                     # Inject market settings into current_trade dict for management usage (e.g. Stop Loss)
                     self.current_trade['market_settings'] = market_settings
                     logging.info(f"Trade OPENED ({symbol}): {self.current_trade['id']}")
+
+                    # Notify
+                    msg = (
+                        f"✅ **Trade OPENED**\n"
+                        f"Symbol: `{symbol}`\n"
+                        f"Side: `{signal}`\n"
+                        f"Entry: `{order['average']}`\n"
+                        f"Amt: `{order['amount']}`\n"
+                        f"Lev: `{leverage}x`"
+                    )
+                    await self.send_notification(msg)
                     return True # Signal that we entered
         return False
 
