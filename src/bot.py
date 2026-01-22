@@ -242,6 +242,19 @@ class MrRobotTrade:
                 await self.exchange.update_paper_balance(pnl)
 
             logging.info(f"Trade CLOSED. PnL: {pnl:.2f} USDT")
+
+            # Notify
+            icon = "💰" if pnl >= 0 else "🔻"
+            msg = (
+                f"{icon} **Trade CLOSED**\n"
+                f"Symbol: `{symbol}`\n"
+                f"Side: `{side}`\n"
+                f"Close: `{exit_price}`\n"
+                f"PnL: `{pnl:.2f} USDT` ({((exit_price - entry_price) / entry_price * 100):.2f}%)\n"
+                f"Reason: `{reason}`"
+            )
+            await self.send_notification(msg)
+
             self.current_trade = None
 
 if __name__ == "__main__":
