@@ -96,6 +96,10 @@ class MrRobotTrade:
                         continue
 
                     current_price = await self.exchange.get_current_price(symbol) # Pass symbol
+                    if current_price is None:
+                        await asyncio.sleep(10)
+                        continue
+
                     df = self.strategy.parse_data(candles)
                     df = self.strategy.calculate_indicators(df)
 
@@ -119,6 +123,9 @@ class MrRobotTrade:
                         df = self.strategy.parse_data(candles)
                         df = self.strategy.calculate_indicators(df)
                         current_price = await self.exchange.get_current_price(symbol)
+
+                        if current_price is None:
+                            continue
 
                         # Check Entry
                         entered = await self.look_for_entry(df, current_price, market)
