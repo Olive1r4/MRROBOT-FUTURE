@@ -9,3 +9,9 @@ services:
       - .env
     volumes:
       - ./src:/app/src  # Hot reload for development (optional but useful)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"      # Maximum size of each log file
+        max-file: "3"        # Keep only 3 rotated log files
+        compress: "true"     # Compress rotated logs
