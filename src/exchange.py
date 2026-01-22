@@ -8,7 +8,6 @@ from src.database import Database
 class Exchange:
     def __init__(self):
         self.mode = Config.TRADING_MODE
-        self.symbol = Config.SYMBOL
         self.timeframe = Config.TIMEFRAME
         self.db = Database()
 
