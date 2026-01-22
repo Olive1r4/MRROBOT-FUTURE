@@ -1,0 +1,66 @@
+from supabase import create_client, Client
+from src.config import Config
+import logging
+
+class Database:
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(Database, cls).__new__(cls)
+            try:
+                cls._instance.client: Client = create_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
+                logging.info("Connected to Supabase successfully.")
+            except Exception as e:
+                logging.error(f"Failed to connect to Supabase: {e}")
+                raise e
+        return cls._instance
+
+    def get_client(self) -> Client:
+        return self.client
+
+    def log_trade(self, trade_data: dict):
+        try:
+            db = self.get_client()
+            response = db.table('trades').insert(trade_data).execute()
+            return response
+        except Exception as e:
+            logging.error(f"Error logging trade: {e}")
+            return None
+
+    def update_trade(self, trade_id: str, update_data: dict):
+        try:
+            db = self.get_client()
+            response = db.table('trades').update(update_data).eq('id', trade_id).execute()
+            return response
+        except Exception as e:
+            logging.error(f"Error updating trade: {e}")
+            return None
+
+    def log_wallet(self, wallet_data: dict):
+        try:
+            db = self.get_client()
+            # Only keep history, don't update existing rows usually for history
+            response = db.table('wallet_history').insert(wallet_data).execute()
+            return response
+        except Exception as e:
+            logging.error(f"Error logging wallet history: {e}")
+            return None
+
+    def get_latest_paper_balance(self):
+        try:
+            db = self.get_client()
+            # Get the most recent wallet history entry for PAPER mode
+            response = db.table('wallet_history')\
+                .select('total_balance')\
+                .eq('mode', 'PAPER')\
+                .order('timestamp', desc=True)\
+                .limit(1)\
+                .execute()
+
+            if response.data and len(response.data) > 0:
+                return float(response.data[0]['total_balance'])
+            return None
+        except Exception as e:
+            logging.error(f"Error fetching paper balance: {e}")
+            return None

@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  mrrobot_trade:
+    build: .
+    container_name: mrrobot_trade_bot
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./src:/app/src  # Hot reload for development (optional but useful)
