@@ -9,22 +9,34 @@ class RiskManager:
 
     def check_kill_switch(self):
         """Check if system is active. Returns False if kill switch is activated."""
-        try:
-            client = self.db.get_client()
-            response = client.table('circuit_breaker')\
-                .select('is_system_active')\
-                .eq('id', 1)\
-                .execute()
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                client = self.db.get_client()
+                response = client.table('circuit_breaker')\
+                    .select('is_system_active')\
+                    .eq('id', 1)\
+                    .execute()
 
-            if response.data and len(response.data) > 0:
-                is_active = response.data[0]['is_system_active']
-                if not is_active:
-                    logging.warning("🚨 KILL SWITCH ACTIVATED - System is disabled")
-                return is_active
-            return True
-        except Exception as e:
-            logging.error(f"Error checking kill switch: {e}")
-            return False
+                if response.data and len(response.data) > 0:
+                    is_active = response.data[0]['is_system_active']
+                    if not is_active:
+                        logging.warning("🚨 KILL SWITCH ACTIVATED - System is disabled")
+                    return is_active
+                return True
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logging.warning(f"⚠️ Kill switch check failed (attempt {attempt+1}/{max_retries}). Retrying in 2s...")
+                    import asyncio
+                    # Note: RiskManager is used in an async context, but check_kill_switch might be called sync or async.
+                    # In bot.py it is called as: if not self.risk_manager.check_kill_switch():
+                    # So it's currently synchronous. We'll use time.sleep for simplicity since it's a critical safety check.
+                    import time
+                    time.sleep(2)
+                else:
+                    logging.error(f"❌ Critical Error checking kill switch after {max_retries} attempts: {e}")
+                    return False
+        return False
 
     def check_daily_loss(self, current_balance):
         """
