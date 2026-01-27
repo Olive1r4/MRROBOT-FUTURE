@@ -344,7 +344,7 @@ class MrRobotTrade:
         side = 'SELL' if self.current_trade['side'] == 'LONG' else 'BUY'
         symbol = self.current_trade['symbol']
 
-        order = await self.exchange.create_order(symbol, side, amount)
+        order = await self.exchange.create_order(symbol, side, amount, params={'reduceOnly': True})
 
         if order:
             # 2. Calculate Realized PnL

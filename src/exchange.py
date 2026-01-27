@@ -87,8 +87,11 @@ class Exchange:
         except Exception as e:
             logging.error(f"Error setting leverage for {symbol}: {e}")
 
-    async def create_order(self, symbol, side, amount):
+    async def create_order(self, symbol, side, amount, params=None):
         """Hybrid Order Execution."""
+        if params is None:
+            params = {}
+
         current_price = await self.get_current_price(symbol)
         if not current_price:
             logging.error("Cannot create order: Failed to get price.")
@@ -104,7 +107,8 @@ class Exchange:
                     symbol=symbol,
                     type='MARKET',
                     side=ccxt_side,
-                    amount=amount
+                    amount=amount,
+                    params=params
                 )
                 return order
             except Exception as e:
