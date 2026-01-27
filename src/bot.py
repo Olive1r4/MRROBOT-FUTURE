@@ -225,32 +225,43 @@ class MrRobotTrade:
                 trade_record = {
                     'symbol': symbol,
                     'side': signal,
-                    'entry_price': float(order['average']),
-                    'amount': float(order['amount']),
+                    'entry_price': float(order.get('average', current_price)),
+                    'amount': float(order.get('amount', amount)),
                     'status': 'OPEN',
                     'mode': Config.TRADING_MODE,
                     'entry_reason': 'EMA Cross + SuperTrend',
                     'strategy_data': data
                 }
 
+                logging.info(f"Order executed on Binance: {symbol} {signal}")
+
                 res = self.db.log_trade(trade_record)
                 if res and res.data:
                     self.current_trade = res.data[0]
                     # Inject market settings into current_trade dict for management usage (e.g. Stop Loss)
                     self.current_trade['market_settings'] = market_settings
-                    logging.info(f"Trade OPENED ({symbol}): {self.current_trade['id']}")
+                    logging.info(f"Trade recorded in DB: {self.current_trade['id']}")
+                else:
+                    logging.critical(f"🚨 FAILED TO LOG TRADE IN DB! But order is OPEN on Binance. Local state updated.")
+                    # Set local state even if DB failed so we don't open multiple orders
+                    self.current_trade = trade_record
+                    self.current_trade['id'] = 'LOCAL_TEMP_ID'
+                    self.current_trade['market_settings'] = market_settings
 
-                    # Notify
-                    msg = (
-                        f"✅ **Trade OPENED**\n"
-                        f"Symbol: `{symbol}`\n"
-                        f"Side: `{signal}`\n"
-                        f"Entry: `{order['average']}`\n"
-                        f"Amt: `{order['amount']}`\n"
-                        f"Lev: `{leverage}x`"
-                    )
-                    await self.send_notification(msg)
-                    return True # Signal that we entered
+                # Notify
+                msg = (
+                    f"✅ **Trade OPENED**\n"
+                    f"Symbol: `{symbol}`\n"
+                    f"Side: `{signal}`\n"
+                    f"Entry: `{order.get('average', current_price)}`\n"
+                    f"Amt: `{order.get('amount', amount)}`\n"
+                    f"Lev: `{leverage}x`"
+                )
+                if not res:
+                    msg += "\n⚠️ **DATABASE LOGGING FAILED!** Check manual positions."
+
+                await self.send_notification(msg)
+                return True # Signal that we entered
         return False
 
     async def manage_trade(self, df, current_price):
