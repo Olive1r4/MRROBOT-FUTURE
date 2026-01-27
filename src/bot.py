@@ -369,9 +369,17 @@ class MrRobotTrade:
 
             self.db.update_trade(self.current_trade['id'], update_data)
 
-            # 4. Update Paper Balance if needed
+            # 4. Update/Log Balance
             if Config.TRADING_MODE == 'PAPER':
                 await self.exchange.update_paper_balance(pnl)
+            else:
+                # Log current LIVE balance to DB history
+                new_bal = await self.exchange.get_balance()
+                self.db.log_wallet({
+                    'total_balance': float(new_bal['total']),
+                    'available_balance': float(new_bal['free']),
+                    'mode': 'LIVE'
+                })
 
             logging.info(f"Trade CLOSED. PnL: {pnl:.2f} USDT")
 
