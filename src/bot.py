@@ -300,9 +300,9 @@ class MrRobotTrade:
                 exit_reason = f"Initial Stop Loss (-{initial_stop_percent*100}%)"
 
         # 3. Atualizar/Verificar Trailing Stop (Lucro)
-        # Ativação: Se lucrou >= 1.5%
-        if pnl_pct >= 0.015:
-            new_stop = current_price * (1 - 0.01) # Margem de 1% (protege 0.5% garantido)
+        # Ativação Precoce: Se lucrou >= 0.5%
+        if pnl_pct >= 0.005:
+            new_stop = current_price * (1 - 0.01) # Margem de 1% (persegue o preço de perto)
 
             # Lógica da Catraca: Só move se for para subir o stop
             if trailing_stop_price is None or new_stop > trailing_stop_price:
