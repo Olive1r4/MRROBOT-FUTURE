@@ -3,10 +3,10 @@ import pandas_ta as ta
 
 class Strategy:
     def __init__(self):
-        self.ema_fast_len = 9
-        self.ema_slow_len = 21
-        self.supertrend_len = 10
-        self.supertrend_factor = 3
+        # Mean Reversion Scalping Setup
+        self.bb_length = 20
+        self.bb_std = 2.0
+        self.rsi_length = 14
 
     def parse_data(self, ohlcv):
         """Convert CCXT ohlcv to Pandas DataFrame."""
@@ -18,79 +18,64 @@ class Strategy:
         return df
 
     def calculate_indicators(self, df):
-        """Calculate EMAs and SuperTrend."""
-        if df.empty or len(df) < 50:
+        """Calculate Bollinger Bands and RSI."""
+        if df.empty or len(df) < self.bb_length:
             return df
 
-        # EMAs
-        df['ema_fast'] = ta.ema(df['close'], length=self.ema_fast_len)
-        df['ema_slow'] = ta.ema(df['close'], length=self.ema_slow_len)
+        # Bollinger Bands
+        bb = ta.bbands(df['close'], length=self.bb_length, std=self.bb_std)
+        if bb is not None:
+            df = pd.concat([df, bb], axis=1)
+            # Normalize names (Pandas TA uses BBL_20_2.0, BBM_20_2.0, BBU_20_2.0)
+            df['bb_lower'] = df[f'BBL_{self.bb_length}_{self.bb_std}']
+            df['bb_middle'] = df[f'BBM_{self.bb_length}_{self.bb_std}']
+            df['bb_upper'] = df[f'BBU_{self.bb_length}_{self.bb_std}']
 
-        # SuperTrend
-        # returns DataFrame with columns: SUPERT_7_3.0, SUPERTd_7_3.0, SUPERTl_7_3.0, SUPERTs_7_3.0
-        st = ta.supertrend(df['high'], df['low'], df['close'], length=self.supertrend_len, multiplier=self.supertrend_factor)
-
-        if st is not None:
-            df = pd.concat([df, st], axis=1)
-            # Normalize column name for easier access (find the one starting with SUPERT_)
-            st_col = [col for col in df.columns if col.startswith('SUPERT_')][0]
-            df['supertrend'] = df[st_col] # The value line
-
-            # Identify SuperTrend direction (True = UP/Green, False = DOWN/Red)
-            # Pandas TA usually gives a direction column, typically 1 for up, -1 for down.
-            # Let's inspect the specific implementation output or assume standar behavior.
-            # Usually: Close > Supertrend = Bullish.
+        # RSI
+        df['rsi'] = ta.rsi(df['close'], length=self.rsi_length)
 
         return df
 
     def check_signal(self, df):
         """
-        Check for ENTRY signals based on closed candles.
-        We look at the last closed candle (iloc[-2]) because iloc[-1] is the open/current candle.
+        Check for ENTRY signals (LONG) based on Mean Reversion.
+        Entry: Close < Lower Band (Dip) AND RSI < 30 (Oversold)
         """
-        if df.empty or len(df) < 30:
+        if df.empty or len(df) < self.bb_length:
             return None, None
 
-        # Last closed candle
+        # Signals are checked on the last closed candle
         curr = df.iloc[-2]
-        prev = df.iloc[-3]
 
         # Conditions
-        # 1. Golden Cross: EMA 9 crosses above EMA 21
-        crossover = (curr['ema_fast'] > curr['ema_slow']) and (prev['ema_fast'] <= prev['ema_slow'])
+        dip = curr['close'] < curr['bb_lower']
+        oversold = curr['rsi'] < 30
 
-        # 2. Price above SuperTrend
-        trend_bullish = curr['close'] > curr['supertrend']
-
-        # Entry Signal
-        if crossover and trend_bullish:
+        if dip and oversold:
             return "LONG", {
-                "ema_fast": curr['ema_fast'],
-                "ema_slow": curr['ema_slow'],
-                "supertrend": curr['supertrend'],
-                "price": curr['close']
+                "bb_lower": float(curr['bb_lower']),
+                "bb_middle": float(curr['bb_middle']),
+                "rsi": float(curr['rsi']),
+                "price": float(curr['close'])
             }
 
         return None, None
 
     def check_exit(self, df, position_side):
         """
-        Check for EXIT signals based on closed candles.
+        Check for EXIT signals based on Mean Reversion.
+        Exit: Price >= Middle Band (Return to mean) OR RSI > 70
         """
-        if df.empty:
+        if df.empty or len(df) < 1:
             return False, "No Data"
 
-        curr = df.iloc[-2]
-        prev = df.iloc[-3]
+        # For exits, we can use the current price (last candle in DF)
+        curr = df.iloc[-1]
 
         if position_side == "LONG":
-            # 1. Reverse Cross: EMA 9 crosses below EMA 21
-            cross_under = (curr['ema_fast'] < curr['ema_slow']) and (prev['ema_fast'] >= prev['ema_slow'])
-
-            if cross_under:
-                return True, "EMA Cross Under"
-
-        # Note: Stop Loss is usually handled by the Bot loop checking current price vs entry price,
-        # but strategy can also define technical exits.
+            exit_condition = (curr['close'] >= curr['bb_middle']) or (curr['rsi'] > 70)
+            if exit_condition:
+                reason = "Mean Reversion (BB Middle)" if curr['close'] >= curr['bb_middle'] else "RSI Overbought (>70)"
+                return True, reason
 
         return False, None

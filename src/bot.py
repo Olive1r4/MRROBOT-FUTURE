@@ -126,7 +126,7 @@ class MrRobotTrade:
                     active_markets = self.db.get_active_markets()
                     if not active_markets:
                         logging.warning("No active markets found in DB.")
-                        await asyncio.sleep(60)
+                        await asyncio.sleep(10)
                         continue
 
                     for market in active_markets:
@@ -168,13 +168,13 @@ class MrRobotTrade:
                         await asyncio.sleep(1)
 
                 # Wait before next cycle
-                await asyncio.sleep(60)
+                await asyncio.sleep(10)
 
             except Exception as e:
                 logging.error(f"Main Loop Error: {e}")
                 import traceback
                 traceback.print_exc()
-                await asyncio.sleep(60)
+                await asyncio.sleep(10)
 
     async def look_for_entry(self, df, current_price, market_settings):
         signal, data = self.strategy.check_signal(df)
@@ -230,7 +230,7 @@ class MrRobotTrade:
                     'amount': float(order.get('amount', amount)),
                     'status': 'OPEN',
                     'mode': Config.TRADING_MODE,
-                    'entry_reason': 'EMA Cross + SuperTrend',
+                    'entry_reason': 'BB Dip + RSI Oversold',
                     'strategy_data': data
                 }
 
@@ -260,7 +260,7 @@ class MrRobotTrade:
                     f"💰 **ENTRADA:** `${float(order.get('average', current_price)):,.2f}`\n"
                     f"📊 **VALOR:** `${notional:,.2f} USDT`\n"
                     f"⚙️ **ALAVANCAGEM:** `{leverage}x`\n\n"
-                    f"🎯 *Monitorando Trailing Stop: 1.5%*"
+                    f"🎯 *Monitorando Trailing Stop: 0.1% (Gatilho 0.4%)*"
                 )
                 if not res:
                     msg += "\n\n⚠️ **DATABASE ERROR:** Posição aberta mas não registrada no DB!"
@@ -302,9 +302,9 @@ class MrRobotTrade:
                 exit_reason = f"Initial Stop Loss (-{initial_stop_percent*100}%)"
 
         # 3. Atualizar/Verificar Trailing Stop (Lucro)
-        # Ativação Precoce: Se lucrou >= 0.5%
-        if pnl_pct >= 0.005:
-            new_stop = current_price * (1 - 0.01) # Margem de 1% (persegue o preço de perto)
+        # Ativação Scalper: Se lucrou >= 0.4%
+        if pnl_pct >= 0.004:
+            new_stop = current_price * (1 - 0.001) # Distância de 0.1%
 
             # Lógica da Catraca: Só move se for para subir o stop
             if trailing_stop_price is None or new_stop > trailing_stop_price:
@@ -316,13 +316,13 @@ class MrRobotTrade:
                 self.db.update_trade(self.current_trade['id'], {'strategy_data': strategy_data})
 
                 msg = (
-                    f"⚙️ **TRAILING STOP ATUALIZADO**\n\n"
+                    f"⚙️ **TRAILING STOP ESCALADOR**\n\n"
                     f"🔹 **Ativo:** {symbol}\n"
                     f"🛡️ **Novo Stop:** ${trailing_stop_price:,.2f}\n"
                     f"📈 **Lucro Atual:** {pnl_pct*100:.2f}%"
                 )
                 await self.send_notification(msg)
-                logging.info(f"[{symbol}] Trailing Stop movido para {trailing_stop_price:.2f}")
+                logging.info(f"[{symbol}] Trailing Stop Scalper movido para {trailing_stop_price:.2f}")
 
         # Execução do Trailing Stop
         if trailing_stop_price is not None and current_price < trailing_stop_price:
