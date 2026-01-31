@@ -42,7 +42,7 @@ class Strategy:
 
     def check_signal(self, df):
         """
-        Check for ENTRY signals (LONG) based on Trend Following.
+        Check for ENTRY signals (LONG or SHORT) based on Trend Following.
         """
         if df.empty or len(df) < self.ema_long_len:
             return None, None
@@ -50,36 +50,40 @@ class Strategy:
         curr = df.iloc[-2] # Last closed candle
         prev = df.iloc[-3]
 
-        # 1. Trend Direction (EMA 50 > EMA 200)
-        trend_up = curr['ema_50'] > curr['ema_200']
+        # Trend Indicators
+        ema_short = curr['ema_50']
+        ema_long = curr['ema_200']
 
-        # 2. Strong Trend Strength (ADX > 20)
         strong_trend = curr['adx'] > self.adx_threshold
 
-        # 3. Entry Trigger:
-        # Option A: Golden Cross (EMA 50 crosses above 200) - Very safe, rare signals
-        # Option B: Price Pullback (Price closes above EMA 50 while Trend is UP) - More frequent
-        # Let's go with Golden Cross OR Trend Continuation (Price crosses EMA 50 up)
-
-        # Golden Cross
-        golden_cross = (curr['ema_50'] > curr['ema_200']) and (prev['ema_50'] <= prev['ema_200'])
-
-        # Price Cross over EMA 50 (Re-entry in trend)
-        price_cross_ema50 = (curr['close'] > curr['ema_50']) and (prev['close'] <= prev['ema_50'])
-
-        signal = False
+        signal_side = None
         reason = ""
 
         if strong_trend:
-            if golden_cross:
-                signal = True
-                reason = "Golden Cross (50/200)"
-            elif trend_up and price_cross_ema50:
-                signal = True
-                reason = "Trend Continuation (EMA 50 Breakout)"
+            # --- LONG LOGIC ---
+            if ema_short > ema_long: # Bullish Trend
+                # Price Cross over EMA 50 (Trend Continuation)
+                if (curr['close'] > ema_short) and (prev['close'] <= prev['ema_50']):
+                    signal_side = "LONG"
+                    reason = "Trend Continuation UP (EMA 50 Breakout)"
+                # Golden Cross (Rare but Strong)
+                elif (curr['ema_50'] > curr['ema_200']) and (prev['ema_50'] <= prev['ema_200']):
+                    signal_side = "LONG"
+                    reason = "Golden Cross (50/200)"
 
-        if signal:
-            return "LONG", {
+            # --- SHORT LOGIC ---
+            elif ema_short < ema_long: # Bearish Trend
+                # Price Cross under EMA 50 (Trend Continuation Down)
+                if (curr['close'] < ema_short) and (prev['close'] >= prev['ema_50']):
+                    signal_side = "SHORT"
+                    reason = "Trend Continuation DOWN (EMA 50 Breakdown)"
+                # Death Cross (Rare but Strong)
+                elif (curr['ema_50'] < curr['ema_200']) and (prev['ema_50'] >= prev['ema_200']):
+                    signal_side = "SHORT"
+                    reason = "Death Cross (50/200)"
+
+        if signal_side:
+            return signal_side, {
                 "ema_50": float(curr['ema_50']),
                 "ema_200": float(curr['ema_200']),
                 "adx": float(curr['adx']),
@@ -99,9 +103,15 @@ class Strategy:
 
         curr = df.iloc[-1] # Current candle
 
-        # Exit if Trend breaks (Price closes below EMA 200) - "The Trend is dead"
+        # LONG Exit: Close < EMA 50 (Lost short-term momentum) OR Close < EMA 200 (Trend Dead)
+        # To be purely trend following on 15m, losing the EMA 50 is a good tactical exit.
         if position_side == "LONG":
-            if curr['close'] < curr['ema_200']:
-                return True, "Trend Reversal (Close < EMA 200)"
+            if curr['close'] < curr['ema_50']:
+                return True, "Trend Weakness (Close < EMA 50)"
+
+        # SHORT Exit: Close > EMA 50 (Gained short-term momentum)
+        if position_side == "SHORT":
+            if curr['close'] > curr['ema_50']:
+                return True, "Trend Weakness (Close > EMA 50)"
 
         return False, None

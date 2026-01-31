@@ -28,7 +28,9 @@ class MrRobotTrade:
         self.strategy = Strategy()
         self.risk_manager = RiskManager()
         self.running = True
-        self.current_trade = None
+        self.active_trades = [] # List of active trade objects
+        self.MAX_OPEN_TRADES = 3
+        self.MAX_EXPOSURE_PCT = 0.30 # 30% total exposure
         self.tg_bot = None
 
         # Add Supabase Error Handler
@@ -39,7 +41,8 @@ class MrRobotTrade:
             self.tg_bot = Bot(token=Config.TELEGRAM_BOT_TOKEN)
 
         # Load any existing OPEN trade from DB
-        self._load_open_trade()
+        # Load any existing OPEN trades from DB
+        self._load_open_trades()
 
     async def send_notification(self, message):
         """Send message to Telegram."""
@@ -49,7 +52,7 @@ class MrRobotTrade:
             except TelegramError as e:
                 logging.error(f"Telegram Error: {e}")
 
-    def _load_open_trade(self):
+    def _load_open_trades(self):
         """Recover state from DB."""
         try:
             client = self.db.get_client()
@@ -61,15 +64,16 @@ class MrRobotTrade:
                 .execute()
 
             if response.data and len(response.data) > 0:
-                self.current_trade = response.data[0]
-                # Try to fetch settings for this symbol
-                try:
-                    settings_res = client.table('market_settings').select('*').eq('symbol', self.current_trade['symbol']).execute()
-                    if settings_res.data:
-                        self.current_trade['market_settings'] = settings_res.data[0]
-                except:
-                    pass
-                logging.info(f"Resumed OPEN trade: {self.current_trade['id']} ({self.current_trade['symbol']})")
+                self.active_trades = response.data
+                for trade in self.active_trades:
+                    # Inject settings
+                    try:
+                        settings_res = client.table('market_settings').select('*').eq('symbol', trade['symbol']).execute()
+                        if settings_res.data:
+                            trade['market_settings'] = settings_res.data[0]
+                    except:
+                        pass
+                    logging.info(f"Resumed OPEN trade: {trade['id']} ({trade['symbol']})")
         except Exception as e:
             logging.error(f"Error loading open trades: {e}")
 
@@ -103,9 +107,11 @@ class MrRobotTrade:
                     continue
 
                 # 1. Manage Existing Trade (Global Single Trade Rule)
-                if self.current_trade:
-                    # Fetch data only for the active symbol
-                    symbol = self.current_trade['symbol']
+                # 1. Manage Existing Trades
+                if self.active_trades:
+                    # Create a copy to iterate safely as we might remove items
+                    for trade in self.active_trades[:]:
+                        symbol = trade['symbol']
                     candles = await self.exchange.get_candles(symbol) # Pass symbol
                     if not candles:
                         await asyncio.sleep(10)
@@ -119,10 +125,10 @@ class MrRobotTrade:
                     df = self.strategy.parse_data(candles)
                     df = self.strategy.calculate_indicators(df)
 
-                    await self.manage_trade(df, current_price)
+                    await self.manage_trade(df, current_price, trade)
 
-                else:
-                    # 2. Scanning Mode (No switch active)
+                # 2. Scanning Mode (Only if slots available)
+                if len(self.active_trades) < self.MAX_OPEN_TRADES:
                     active_markets = self.db.get_active_markets()
                     if not active_markets:
                         logging.warning("No active markets found in DB.")
@@ -143,6 +149,11 @@ class MrRobotTrade:
                         if current_price is None:
                             continue
 
+                        # Check Entry (Skip symbols already open)
+                        is_open = any(t['symbol'] == symbol for t in self.active_trades)
+                        if is_open:
+                            continue
+
                         # Check Entry
                         entered = await self.look_for_entry(df, current_price, market)
 
@@ -160,8 +171,9 @@ class MrRobotTrade:
                             )
 
                         if entered:
-                            # SINGLE TRADE RULE: Stop scanning once we enter a trade
-                            break
+                            # If we filled the last slot, stop scanning
+                            if len(self.active_trades) >= self.MAX_OPEN_TRADES:
+                                break
 
                         # Small delay between symbols to avoid rate limits
                         await asyncio.sleep(1)
@@ -179,7 +191,7 @@ class MrRobotTrade:
         signal, data = self.strategy.check_signal(df)
         symbol = market_settings['symbol']
 
-        if signal == "LONG":
+        if signal:
             logging.info(f"SIGNAL DETECTED ({symbol}): {signal} at {current_price}")
 
             # 1. Risk Checks
@@ -209,7 +221,14 @@ class MrRobotTrade:
             if Config.TRADING_MODE == 'LIVE':
                  await self.exchange.set_leverage(leverage, symbol)
 
-            amount = self.exchange.calculate_position_size(available_balance, current_price, leverage)
+             # Exposure Management:
+             # Each trade gets (MAX_EXPOSURE / MAX_TRADES) share of balance, OR remaining available balance, whichever is safer.
+             # E.g. 30% exposure / 3 trades = 10% per trade.
+             target_per_trade_pct = self.MAX_EXPOSURE_PCT / self.MAX_OPEN_TRADES
+             position_size_usdt = available_balance * target_per_trade_pct
+
+             # Convert USDT size to Token Amount
+             amount = (position_size_usdt * leverage) / current_price
 
             # 1.4 Final Validation
             is_valid, error_msg = self.risk_manager.validate_entry(symbol, leverage, amount, available_balance, current_price)
@@ -237,16 +256,16 @@ class MrRobotTrade:
 
                 res = self.db.log_trade(trade_record)
                 if res and res.data:
-                    self.current_trade = res.data[0]
+                    self.active_trades.append(new_trade_obj)
                     # Inject market settings into current_trade dict for management usage (e.g. Stop Loss)
                     self.current_trade['market_settings'] = market_settings
                     logging.info(f"Trade recorded in DB: {self.current_trade['id']}")
                 else:
                     logging.critical(f"🚨 FAILED TO LOG TRADE IN DB! But order is OPEN on Binance. Local state updated.")
-                    # Set local state even if DB failed so we don't open multiple orders
-                    self.current_trade = trade_record
-                    self.current_trade['id'] = 'LOCAL_TEMP_ID'
-                    self.current_trade['market_settings'] = market_settings
+                    new_trade_obj = trade_record
+                    new_trade_obj['id'] = 'LOCAL_TEMP_ID'
+                    new_trade_obj['market_settings'] = market_settings
+                    self.active_trades.append(new_trade_obj)
 
                 # Notify
                 side_icon = "🟢" if signal.upper() in ['LONG', 'BUY'] else "🔴"
@@ -268,26 +287,30 @@ class MrRobotTrade:
                 return True # Signal that we entered
         return False
 
-    async def manage_trade(self, df, current_price):
-        symbol = self.current_trade['symbol']
-        side = self.current_trade['side']
-        entry_price = float(self.current_trade['entry_price'])
-        # Cálculo de PnL % (Assume LONG por enquanto conforme look_for_entry)
-        pnl_pct = (current_price - entry_price) / entry_price
+    async def manage_trade(self, df, current_price, trade):
+        symbol = trade['symbol']
+        side = trade['side']
+        entry_price = float(trade['entry_price'])
+
+        # PnL Calculation depending on side
+        if side == 'LONG':
+            pnl_pct = (current_price - entry_price) / entry_price
+        else: # SHORT
+            pnl_pct = (entry_price - current_price) / entry_price
 
         # Heartbeat Log while managing
-        leverage = int(self.current_trade.get('market_settings', {}).get('leverage', 5))
+        leverage = int(trade.get('market_settings', {}).get('leverage', 5))
         roi_pct = pnl_pct * leverage
-        ts_status = f"{float(self.current_trade.get('strategy_data', {}).get('trailing_stop_price', 0)):.2f}" if self.current_trade.get('strategy_data', {}).get('trailing_stop_price') else "OFF"
-        logging.info(f"[{symbol}] MANAGING | Price: {current_price:.2f} | PnL: {pnl_pct*100:.2f}% | ROI: {roi_pct*100:.2f}% | TS: {ts_status}")
+        ts_status = f"{float(trade.get('strategy_data', {}).get('trailing_stop_price', 0)):.2f}" if trade.get('strategy_data', {}).get('trailing_stop_price') else "OFF"
+        logging.info(f"[{symbol} | {side}] MANAGING | Price: {current_price:.2f} | PnL: {pnl_pct*100:.2f}% | ROI: {roi_pct*100:.2f}% | TS: {ts_status}")
 
         # 1. Recuperar Dados
         initial_stop_percent = 0.05
-        if 'market_settings' in self.current_trade:
-             initial_stop_percent = float(self.current_trade['market_settings'].get('stop_loss_percent', 0.05))
+        if 'market_settings' in trade:
+             initial_stop_percent = float(trade['market_settings'].get('stop_loss_percent', 0.05))
 
         # Trailing Stop Price from strategy_data
-        strategy_data = self.current_trade.get('strategy_data', {})
+        strategy_data = trade.get('strategy_data', {})
         if strategy_data is None: strategy_data = {}
         trailing_stop_price = strategy_data.get('trailing_stop_price')
 
@@ -319,15 +342,23 @@ class MrRobotTrade:
                 logging.info(f"[{symbol}] Initial Risk Setup | ATR Stop: {initial_stop:.2f} | TP: {tp_str}")
 
             stop_loss = strategy_data.get('stop_loss_price')
-            if stop_loss and current_price <= stop_loss:
-                should_exit = True
-                exit_reason = f"ATR Stop Loss ({stop_loss:.2f})"
+            if stop_loss:
+                if side == 'LONG' and current_price <= stop_loss:
+                    should_exit = True
+                    exit_reason = f"ATR Stop Loss ({stop_loss:.2f})"
+                elif side == 'SHORT' and current_price >= stop_loss:
+                    should_exit = True
+                    exit_reason = f"ATR Stop Loss ({stop_loss:.2f})"
 
         # 3. Take Profit Fixo (1.5x)
         take_profit = strategy_data.get('take_profit_price')
-        if take_profit and current_price >= take_profit:
-             should_exit = True
-             exit_reason = f"Take Profit Target (1.5x) ({take_profit:.2f})"
+        if take_profit:
+            if side == 'LONG' and current_price >= take_profit:
+                 should_exit = True
+                 exit_reason = f"Take Profit Target (1.5x) ({take_profit:.2f})"
+            elif side == 'SHORT' and current_price <= take_profit:
+                 should_exit = True
+                 exit_reason = f"Take Profit Target (1.5x) ({take_profit:.2f})"
 
         # 4. Trailing Stop (Breakeven)
         # Se lucrou 1x o risco, move pro zero a zero
@@ -335,13 +366,22 @@ class MrRobotTrade:
             stop_price = float(strategy_data['stop_loss_price'])
             risk_amount = entry_price - stop_price
 
-            # Se preço andou 1x o risco a favor
-            if current_price >= (entry_price + risk_amount):
-                new_stop = entry_price * 1.001 # Breakeven + taxas
+            # Breakeven Move Logic
+            should_move = False
+            new_stop = 0
+
+            if side == 'LONG' and current_price >= (entry_price + risk_amount):
+                 new_stop = entry_price * 1.001
+                 should_move = True
+            elif side == 'SHORT' and current_price <= (entry_price - risk_amount):
+                 new_stop = entry_price * 0.999
+                 should_move = True
+
+            if should_move:
                 trailing_stop_price = new_stop
                 strategy_data['trailing_stop_price'] = trailing_stop_price
-                self.current_trade['strategy_data'] = strategy_data
-                self.db.update_trade(self.current_trade['id'], {'strategy_data': strategy_data})
+                trade['strategy_data'] = strategy_data
+                self.db.update_trade(trade['id'], {'strategy_data': strategy_data})
 
                 msg = (
                     f"🛡️ **STOP MOVIDO PARA BREAKEVEN**\n\n"
@@ -353,9 +393,13 @@ class MrRobotTrade:
                 logging.info(f"[{symbol}] Moved to Breakeven: {new_stop:.2f}")
 
         # Execução do Trailing Stop (se já estiver ativo)
-        if trailing_stop_price is not None and current_price < trailing_stop_price:
-            should_exit = True
-            exit_reason = f"Trailing Stop Hit ({trailing_stop_price:.2f})"
+        if trailing_stop_price is not None:
+            if side == 'LONG' and current_price < trailing_stop_price:
+                should_exit = True
+                exit_reason = f"Trailing Stop Hit ({trailing_stop_price:.2f})"
+            elif side == 'SHORT' and current_price > trailing_stop_price:
+                should_exit = True
+                exit_reason = f"Trailing Stop Hit ({trailing_stop_price:.2f})"
 
         # 4. Saída Técnica (Cruzamento de Médias)
         if not should_exit:
@@ -365,18 +409,18 @@ class MrRobotTrade:
                 exit_reason = tech_reason
 
         if should_exit:
-            await self.close_trade(exit_reason, current_price)
+            await self.close_trade(exit_reason, current_price, trade)
 
-    async def close_trade(self, reason, current_price):
+    async def close_trade(self, reason, current_price, trade):
         logging.info(f"Closing trade. Reason: {reason} | Price: {current_price}")
 
         # 1. Execute Close Order
-        amount = float(self.current_trade['amount'])
-        side = 'SELL' if self.current_trade['side'] == 'LONG' else 'BUY'
-        symbol = self.current_trade['symbol']
+        amount = float(trade['amount'])
+        side_to_close = 'SELL' if trade['side'] == 'LONG' else 'BUY'
+        symbol = trade['symbol']
 
         try:
-            order = await self.exchange.create_order(symbol, side, amount, params={'reduceOnly': True})
+            order = await self.exchange.create_order(symbol, side_to_close, amount, params={'reduceOnly': True})
 
             # 2. If order failed, check if position already closed
             if not order and Config.TRADING_MODE == 'LIVE':
@@ -403,8 +447,8 @@ class MrRobotTrade:
                 exit_price = float(order['price'])
 
             # 3. Calculate Realized PnL
-            entry_price = float(self.current_trade['entry_price'])
-            pnl = (exit_price - entry_price) * amount if self.current_trade['side'] == 'LONG' else (entry_price - exit_price) * amount
+            entry_price = float(trade['entry_price'])
+            pnl = (exit_price - entry_price) * amount if trade['side'] == 'LONG' else (entry_price - exit_price) * amount
 
             # 4. Update DB
             update_data = {
@@ -416,7 +460,7 @@ class MrRobotTrade:
                 'pnl_percentage': (pnl / (entry_price * amount)) * 100 if entry_price != 0 else 0
             }
 
-            self.db.update_trade(self.current_trade['id'], update_data)
+            self.db.update_trade(trade['id'], update_data)
 
             # 5. Update/Log Balance
             if Config.TRADING_MODE == 'PAPER':
@@ -444,7 +488,8 @@ class MrRobotTrade:
             )
             await self.send_notification(msg)
 
-            self.current_trade = None
+            # Remove from active trades list using list comprehension filter
+            self.active_trades = [t for t in self.active_trades if t['id'] != trade['id']]
         except Exception as e:
             logging.error(f"Error in close_trade process: {e}")
 
