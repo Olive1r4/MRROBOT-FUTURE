@@ -221,14 +221,13 @@ class MrRobotTrade:
             if Config.TRADING_MODE == 'LIVE':
                  await self.exchange.set_leverage(leverage, symbol)
 
-             # Exposure Management:
-             # Each trade gets (MAX_EXPOSURE / MAX_TRADES) share of balance, OR remaining available balance, whichever is safer.
-             # E.g. 30% exposure / 3 trades = 10% per trade.
-             target_per_trade_pct = self.MAX_EXPOSURE_PCT / self.MAX_OPEN_TRADES
-             position_size_usdt = available_balance * target_per_trade_pct
+            # Exposure Management:
+            # Each trade gets (MAX_EXPOSURE / MAX_TRADES) share of balance
+            target_per_trade_pct = self.MAX_EXPOSURE_PCT / self.MAX_OPEN_TRADES
+            position_size_usdt = available_balance * target_per_trade_pct
 
-             # Convert USDT size to Token Amount
-             amount = (position_size_usdt * leverage) / current_price
+            # Convert USDT size to Token Amount
+            amount = (position_size_usdt * leverage) / current_price
 
             # 1.4 Final Validation
             is_valid, error_msg = self.risk_manager.validate_entry(symbol, leverage, amount, available_balance, current_price)
