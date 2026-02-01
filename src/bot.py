@@ -89,7 +89,7 @@ class MrRobotTrade:
         })
 
         start_msg = (
-            f"🤖 **MrRobot Trade Inicializado**\n\n"
+            f"🤖 **MrRobot Trade Inicializado v2.1 (Multi-Trade Fix)**\n\n"
             f"📍 **Modo:** {Config.TRADING_MODE}\n"
             f"💵 **Saldo Inicial:** ${total_balance:,.2f} USDT"
         )
@@ -395,8 +395,8 @@ class MrRobotTrade:
                 if risk > 0:
                     strategy_data['take_profit_price'] = entry_price + (1.5 * risk)
 
-                self.current_trade['strategy_data'] = strategy_data
-                self.db.update_trade(self.current_trade['id'], {'strategy_data': strategy_data})
+                trade['strategy_data'] = strategy_data
+                self.db.update_trade(trade['id'], {'strategy_data': strategy_data})
                 tp_val = strategy_data.get('take_profit_price')
                 tp_str = f"{tp_val:.2f}" if tp_val else "N/A"
                 logging.info(f"[{symbol}] Initial Risk Setup | ATR Stop: {initial_stop:.2f} | TP: {tp_str}")
