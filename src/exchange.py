@@ -169,3 +169,129 @@ class Exchange:
         notional_value = usable_balance * leverage
         amount = notional_value / price
         return amount
+
+    async def create_limit_order(self, symbol: str, side: str, amount: float, price: float, params=None):
+        """
+        Create a LIMIT order (for Grid Trading)
+
+        Args:
+            symbol: Trading pair (e.g., 'BTC/USDT')
+            side: 'BUY' or 'SELL'
+            amount: Order size
+            price: Limit price
+            params: Additional parameters
+
+        Returns:
+            Order object or None
+        """
+        if params is None:
+            params = {}
+
+        # Map signals to CCXT sides
+        side_map = {'LONG': 'buy', 'SHORT': 'sell', 'BUY': 'buy', 'SELL': 'sell'}
+        ccxt_side = side_map.get(side.upper(), side.lower())
+
+        if self.mode == 'LIVE':
+            try:
+                order = await self.client.create_order(
+                    symbol=symbol,
+                    type='LIMIT',
+                    side=ccxt_side,
+                    amount=amount,
+                    price=price,
+                    params=params
+                )
+                logging.info(f"[LIMIT] Created {ccxt_side.upper()} order: {amount} {symbol} @ ${price}")
+                return order
+            except Exception as e:
+                logging.error(f"Error creating LIMIT order: {e}")
+                return None
+        else:
+            # Paper Mode - Simulate limit order
+            logging.info(f"[PAPER LIMIT] {ccxt_side.upper()} {amount} {symbol} @ ${price}")
+
+            fake_order = {
+                'id': f'paper_limit_{int(datetime.now().timestamp())}',
+                'symbol': symbol,
+                'side': ccxt_side,
+                'type': 'limit',
+                'amount': amount,
+                'price': price,
+                'status': 'open',  # Limit orders start as 'open'
+                'timestamp': int(datetime.now().timestamp() * 1000),
+                'info': {'msg': 'Simulated Limit Order'}
+            }
+            return fake_order
+
+    async def cancel_order(self, order_id: str, symbol: str):
+        """
+        Cancel a pending order
+
+        Args:
+            order_id: Order ID to cancel
+            symbol: Trading pair
+
+        Returns:
+            True if successful
+        """
+        if self.mode == 'LIVE':
+            try:
+                await self.client.cancel_order(order_id, symbol)
+                logging.info(f"[CANCEL] Order {order_id} cancelled for {symbol}")
+                return True
+            except Exception as e:
+                logging.error(f"Error cancelling order {order_id}: {e}")
+                return False
+        else:
+            # Paper mode - just log
+            logging.info(f"[PAPER CANCEL] Order {order_id} for {symbol}")
+            return True
+
+    async def get_open_orders(self, symbol: str = None):
+        """
+        Get all open orders
+
+        Args:
+            symbol: Optional symbol filter
+
+        Returns:
+            List of open orders
+        """
+        if self.mode == 'LIVE':
+            try:
+                orders = await self.client.fetch_open_orders(symbol)
+                return orders
+            except Exception as e:
+                logging.error(f"Error fetching open orders: {e}")
+                return []
+        else:
+            # Paper mode - return empty for now
+            # In a full implementation, we'd track paper orders in memory
+            return []
+
+    async def cancel_all_orders(self, symbol: str):
+        """
+        Cancel all open orders for a symbol
+
+        Args:
+            symbol: Trading pair
+
+        Returns:
+            Number of orders cancelled
+        """
+        if self.mode == 'LIVE':
+            try:
+                orders = await self.get_open_orders(symbol)
+                cancelled = 0
+                for order in orders:
+                    if await self.cancel_order(order['id'], symbol):
+                        cancelled += 1
+                logging.info(f"[CANCEL ALL] Cancelled {cancelled} orders for {symbol}")
+                return cancelled
+            except Exception as e:
+                logging.error(f"Error cancelling all orders: {e}")
+                return 0
+        else:
+            logging.info(f"[PAPER CANCEL ALL] All orders for {symbol}")
+            return 0
+

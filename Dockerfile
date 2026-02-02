@@ -12,5 +12,5 @@ COPY . .
 # Set python path
 ENV PYTHONPATH=/app
 
-# Run the bot
-CMD ["python", "src/bot.py"]
+# Run the Grid Trading bot
+CMD ["python", "src/grid_bot.py"]

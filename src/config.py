@@ -21,8 +21,15 @@ class Config:
     TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
     # Strategy
-    TIMEFRAME = os.getenv('TIMEFRAME', '4h')
-    INITIAL_PAPER_BALANCE = float(os.getenv('INITIAL_PAPER_BALANCE', 90.0))
+    TIMEFRAME = os.getenv('TIMEFRAME', '15m')
+    INITIAL_PAPER_BALANCE = float(os.getenv('INITIAL_PAPER_BALANCE', 50.0))
+
+    # Grid Trading Config
+    GRID_LEVELS = os.getenv('GRID_LEVELS', '5')
+    GRID_SPACING_PCT = os.getenv('GRID_SPACING_PCT', '0.004')  # 0.4%
+    GRID_PROFIT_PCT = os.getenv('GRID_PROFIT_PCT', '0.004')  # 0.4%
+    CAPITAL_PER_GRID = os.getenv('CAPITAL_PER_GRID', '10.0')  # $10 per level
+    REBALANCE_THRESHOLD = os.getenv('REBALANCE_THRESHOLD', '0.10')  # 10%
 
     @staticmethod
     def validate():
