@@ -186,21 +186,23 @@ class GridTradingBot:
                             'grid_cycle_id': grid_cycle_id
                         }
 
-                        # Save to database
-                        # Note: 'leverage' column might not exist in trades table, removing it just in case
-                        self.db.log_trade({
-                            'symbol': symbol,
-                            'side': 'LONG',  # Grid always starts with BUY
-                            'entry_price': level['price'],
-                            'amount': level['size'],
-                            'status': 'pending',
-                            'strategy_data': {
-                                'strategy': 'grid_trading',
-                                'grid_level': level['level'],
-                                'grid_cycle_id': grid_cycle_id,
-                                'order_id': order['id']
-                            }
-                        })
+                        # Save to database (Best effort)
+                        try:
+                            self.db.log_trade({
+                                'symbol': symbol,
+                                'side': 'LONG',  # Grid always starts with BUY
+                                'entry_price': level['price'],
+                                'amount': level['size'],
+                                'status': 'pending',
+                                'strategy_data': {
+                                    'strategy': 'grid_trading',
+                                    'grid_level': level['level'],
+                                    'grid_cycle_id': grid_cycle_id,
+                                    'order_id': order['id']
+                                }
+                            })
+                        except Exception as e:
+                            logging.error(f"Failed to log trade to DB (continuing anyway): {e}")
 
             msg = (
                 f"📊 **GRID CRIADO: {symbol}**\n\n"
@@ -296,23 +298,26 @@ class GridTradingBot:
                 }
 
                 # Save BUY execution and SELL order creation to DB
-                profit = (opposite['price'] - filled_order['price']) * filled_order['amount']
+                try:
+                    profit = (opposite['price'] - filled_order['price']) * filled_order['amount']
 
-                # Update the BUY trade as filled
-                self.db.log_trade({
-                    'symbol': symbol,
-                    'side': 'LONG',
-                    'entry_price': filled_order['price'],
-                    'amount': filled_order['amount'],
-                    'status': 'open',
-                    'strategy_data': {
-                        'strategy': 'grid_trading',
-                        'grid_level': order_data['level'],
-                        'grid_cycle_id': order_data['grid_cycle_id'],
-                        'sell_order_id': new_order['id'],
-                        'expected_profit': profit
-                    }
-                })
+                    # Update the BUY trade as filled
+                    self.db.log_trade({
+                        'symbol': symbol,
+                        'side': 'LONG',
+                        'entry_price': filled_order['price'],
+                        'amount': filled_order['amount'],
+                        'status': 'open',
+                        'strategy_data': {
+                            'strategy': 'grid_trading',
+                            'grid_level': order_data['level'],
+                            'grid_cycle_id': order_data['grid_cycle_id'],
+                            'sell_order_id': new_order['id'],
+                            'expected_profit': profit
+                        }
+                    })
+                except Exception as e:
+                    logging.error(f"Failed to log trade update to DB: {e}")
 
                 logging.info(f"[GRID] Created opposite order: {opposite['side']} @ ${opposite['price']:.4f}")
 
