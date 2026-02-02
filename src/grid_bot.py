@@ -173,12 +173,29 @@ class GridTradingBot:
                     )
 
                     if order:
+                        grid_cycle_id = str(uuid.uuid4())
                         self.pending_orders[order['id']] = {
                             'symbol': symbol,
                             'level': level['level'],
                             'order': order,
-                            'grid_cycle_id': str(uuid.uuid4())
+                            'grid_cycle_id': grid_cycle_id
                         }
+
+                        # Save to database
+                        self.db.save_trade({
+                            'symbol': symbol,
+                            'side': 'LONG',  # Grid always starts with BUY
+                            'entry_price': level['price'],
+                            'quantity': level['size'],
+                            'leverage': 1,
+                            'status': 'pending',
+                            'strategy_data': {
+                                'strategy': 'grid_trading',
+                                'grid_level': level['level'],
+                                'grid_cycle_id': grid_cycle_id,
+                                'order_id': order['id']
+                            }
+                        })
 
             msg = (
                 f"📊 **GRID CRIADO: {symbol}**\n\n"
@@ -273,6 +290,26 @@ class GridTradingBot:
                     'entry_price': opposite['entry_price']
                 }
 
+                # Save BUY execution and SELL order creation to DB
+                profit = (opposite['price'] - filled_order['price']) * filled_order['amount']
+
+                # Update the BUY trade as filled
+                self.db.save_trade({
+                    'symbol': symbol,
+                    'side': 'LONG',
+                    'entry_price': filled_order['price'],
+                    'quantity': filled_order['amount'],
+                    'leverage': 1,
+                    'status': 'open',
+                    'strategy_data': {
+                        'strategy': 'grid_trading',
+                        'grid_level': order_data['level'],
+                        'grid_cycle_id': order_data['grid_cycle_id'],
+                        'sell_order_id': new_order['id'],
+                        'expected_profit': profit
+                    }
+                })
+
                 logging.info(f"[GRID] Created opposite order: {opposite['side']} @ ${opposite['price']:.4f}")
 
                 msg = (
@@ -280,7 +317,7 @@ class GridTradingBot:
                     f"🔹 Symbol: {symbol}\n"
                     f"📍 Filled: {filled_order['side'].upper()} @ ${filled_order['price']:.4f}\n"
                     f"🎯 Created: {opposite['side']} @ ${opposite['price']:.4f}\n"
-                    f"💰 Expected Profit: ${(opposite['price'] - filled_order['price']) * filled_order['amount']:.2f}"
+                    f"💰 Expected Profit: ${profit:.2f}"
                 )
                 await self.send_notification(msg)
 
