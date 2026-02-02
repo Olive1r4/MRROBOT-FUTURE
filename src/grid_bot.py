@@ -182,7 +182,7 @@ class GridTradingBot:
                         }
 
                         # Save to database
-                        self.db.save_trade({
+                        self.db.log_trade({
                             'symbol': symbol,
                             'side': 'LONG',  # Grid always starts with BUY
                             'entry_price': level['price'],
@@ -294,7 +294,7 @@ class GridTradingBot:
                 profit = (opposite['price'] - filled_order['price']) * filled_order['amount']
 
                 # Update the BUY trade as filled
-                self.db.save_trade({
+                self.db.log_trade({
                     'symbol': symbol,
                     'side': 'LONG',
                     'entry_price': filled_order['price'],
