@@ -441,9 +441,13 @@ class MrRobotTrade:
                     tp_min = entry_price * (1 - min_gain_pct)
                     take_profit = min(tp_atr, tp_min)
 
-                # Log detailed target selection
-                target_type = "MIN_GAIN" if (side == 'LONG' and take_profit == tp_min) or (side == 'SHORT' and take_profit == tp_min) else "ATR_TARGET"
-                logging.info(f"[{symbol}] Target Selection: {target_type} | ATR_TP={tp_atr:.4f} vs MIN_TP={tp_min:.4f}")
+                # --- NOVO BLOCO DE LOG (OBSERVABILIDADE) ---
+                target_type = "ATR"
+                if side == 'LONG' and tp_min > tp_atr: target_type = "MIN_GAIN"
+                elif side == 'SHORT' and tp_min < tp_atr: target_type = "MIN_GAIN"
+
+                logging.info(f"[{symbol}] Risk Setup ({side})")
+                logging.info(f"   Target Selection: {target_type} | ATR_TP={tp_atr:.4f} vs MIN_TP={tp_min:.4f}")
 
                 strategy_data['stop_loss_price'] = initial_stop
                 strategy_data['take_profit_price'] = take_profit
@@ -451,7 +455,7 @@ class MrRobotTrade:
                 trade['strategy_data'] = strategy_data
                 self.db.update_trade(trade['id'], {'strategy_data': strategy_data})
 
-                logging.info(f"[{symbol}] Risk Setup ({side}) | Entry: {entry_price} | Stop: {initial_stop:.4f} | TP: {take_profit:.4f}")
+                logging.info(f"   Final Plan | Entry: {entry_price} | Stop: {initial_stop:.4f} | TP: {take_profit:.4f}")
 
             stop_loss = strategy_data.get('stop_loss_price')
             if stop_loss:
