@@ -480,18 +480,31 @@ class MrRobotTrade:
         # Se lucrou 1x o risco, move pro zero a zero
         if trailing_stop_price is None and 'stop_loss_price' in strategy_data:
             stop_price = float(strategy_data['stop_loss_price'])
-            risk_amount = entry_price - stop_price
+
+            # Risk Amount is absolute distance
+            risk_dist = abs(entry_price - stop_price)
 
             # Breakeven Move Logic
             should_move = False
             new_stop = 0
 
-            if side == 'LONG' and current_price >= (entry_price + risk_amount):
-                 new_stop = entry_price * 1.001
-                 should_move = True
-            elif side == 'SHORT' and current_price <= (entry_price - risk_amount):
-                 new_stop = entry_price * 0.999
-                 should_move = True
+            # Only move to Breakeven if price has moved at least 0.5% in our favor
+            # improving chances we don't get stopped out immediately
+            min_move_pct = 0.005
+
+            if side == 'LONG':
+                 # Trigger: Entry + Risk Distance
+                 trigger_price = entry_price + risk_dist
+                 if current_price >= trigger_price and (current_price / entry_price) > (1 + min_move_pct):
+                     new_stop = entry_price * 1.002 # Set slightly above entry to cover fees
+                     should_move = True
+
+            elif side == 'SHORT':
+                 # Trigger: Entry - Risk Distance
+                 trigger_price = entry_price - risk_dist
+                 if current_price <= trigger_price and (current_price / entry_price) < (1 - min_move_pct):
+                     new_stop = entry_price * 0.998 # Set slightly below entry to cover fees
+                     should_move = True
 
             if should_move:
                 trailing_stop_price = new_stop
