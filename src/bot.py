@@ -569,8 +569,10 @@ class MrRobotTrade:
             logging.info(f"Trade CLOSED. PnL: {pnl:.2f} USDT")
 
             # Notify
-            res_icon = "💰" if pnl >= 0 else "🔻"
-            res_text = "LUCRO" if pnl >= 0 else "PREJUÍZO"
+            # Consider FEES: A very small positive PnL might actually be a loss after fees.
+            # We treat PnL < 0.05 as "Loss/Breakeven" for visual clarity.
+            res_icon = "💰" if pnl >= 0.05 else "🔻"
+            res_text = "LUCRO" if pnl >= 0.05 else "PREJUÍZO"
 
             msg = (
                 f"{res_icon} **OPERAÇÃO FINALIZADA**\n\n"
