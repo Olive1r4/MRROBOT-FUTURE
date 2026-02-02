@@ -22,7 +22,7 @@ class Database:
     def log_trade(self, trade_data: dict):
         try:
             db = self.get_client()
-            response = db.table('trades_mrrobot').insert(trade_data).execute()
+            response = db.table('trades').insert(trade_data).execute()
             return response
         except Exception as e:
             logging.error(f"Error logging trade: {e}")
@@ -31,7 +31,7 @@ class Database:
     def update_trade(self, trade_id: str, update_data: dict):
         try:
             db = self.get_client()
-            response = db.table('trades_mrrobot').update(update_data).eq('id', trade_id).execute()
+            response = db.table('trades').update(update_data).eq('id', trade_id).execute()
             return response
         except Exception as e:
             logging.error(f"Error updating trade: {e}")

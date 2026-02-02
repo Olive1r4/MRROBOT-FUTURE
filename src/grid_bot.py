@@ -132,6 +132,11 @@ class GridTradingBot:
                 logging.error(f"[GRID SETUP] Failed to fetch candles for {symbol}")
                 return
 
+            # Cancel existing orders to start fresh (avoids duplication and margin issues)
+            # This ensures we sync with the current correct grid parameters
+            logging.info(f"[GRID SETUP] Canceling existing orders for {symbol} to align with new grid")
+            await self.exchange.cancel_all_orders(symbol)
+
             # Calculate range
             range_low, range_high, mid_price = self.grid_strategy.calculate_grid_range(candles)
 
@@ -182,12 +187,12 @@ class GridTradingBot:
                         }
 
                         # Save to database
+                        # Note: 'leverage' column might not exist in trades table, removing it just in case
                         self.db.log_trade({
                             'symbol': symbol,
                             'side': 'LONG',  # Grid always starts with BUY
                             'entry_price': level['price'],
                             'quantity': level['size'],
-                            'leverage': 1,
                             'status': 'pending',
                             'strategy_data': {
                                 'strategy': 'grid_trading',
@@ -299,7 +304,6 @@ class GridTradingBot:
                     'side': 'LONG',
                     'entry_price': filled_order['price'],
                     'quantity': filled_order['amount'],
-                    'leverage': 1,
                     'status': 'open',
                     'strategy_data': {
                         'strategy': 'grid_trading',
