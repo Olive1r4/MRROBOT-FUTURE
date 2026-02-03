@@ -138,7 +138,7 @@ class GridTradingBot:
             logging.info(f"[GRID SETUP] Initializing grid for {symbol}")
 
             # Fetch candles for range calculation
-            candles = await self.exchange.get_candles(symbol, limit=96)  # 24h of 15m candles
+            candles = await self.exchange.get_candles(symbol, limit=24)  # 6h of 15m candles (was 24h)
             if not candles:
                 logging.error(f"[GRID SETUP] Failed to fetch candles for {symbol}")
                 return
