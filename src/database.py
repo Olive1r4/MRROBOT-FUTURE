@@ -37,6 +37,30 @@ class Database:
             logging.error(f"Error updating trade: {e}")
             return None
 
+    def update_trade_by_cycle(self, grid_cycle_id: str, update_data: dict):
+        """Update trade using the grid_cycle_id stored in strategy_data jsonb column"""
+        try:
+            db = self.get_client()
+            # We need to query first to find the ID, then update by ID
+            # Or use Supabase JSON filtering if enabled.
+            # Simpler approach: Select ID where strategy_data->>grid_cycle_id equals value
+
+            response = db.table('trades_mrrobot')\
+                .select('id')\
+                .eq('strategy_data->>grid_cycle_id', grid_cycle_id)\
+                .limit(1)\
+                .execute()
+
+            if response.data and len(response.data) > 0:
+                trade_id = response.data[0]['id']
+                return self.update_trade(trade_id, update_data)
+            else:
+                logging.warning(f"Trade with cycle_id {grid_cycle_id} not found for update, falling back to insert.")
+                return None
+        except Exception as e:
+            logging.error(f"Error updating trade by cycle: {e}")
+            return None
+
     def cancel_pending_trades(self, symbol: str):
         try:
             db = self.get_client()

@@ -337,11 +337,25 @@ class GridTradingBot:
                 }
 
                 # Save BUY execution and SELL order creation to DB
+                # Save BUY execution and SELL order creation to DB
                 try:
-                    profit = (opposite['price'] - filled_order['price']) * filled_order['amount']
+                    # Calculate profit based on direction
+                    # If we bought (LONG), profit is Sell - Buy
+                    # If we sold (SHORT), profit is Sell - Buy (which is Entry - Exit for short? No, PnL is usually Entry-Exit for Short)
+                    # For Spot/Long-Only Grid:
+                    if filled_order['side'].upper() == 'BUY':
+                        pnl = (opposite['price'] - filled_order['price']) * filled_order['amount']
+                    else:
+                        # If we filled a SELL, we are placing a BUY back lower.
+                        # The realized profit from the SELL action (vs original buy) is already done.
+                        # But here we are calculating "Expected Profit" of the NEXT leg?
+                        # No, usually we log the realized profit of the cycle just completed?
+                        # Wait, handle_filled_order handles the OPENING of the second leg.
+                        # So we are logging the EXPECTED profit of this new Limit Order.
+                        # If Limit is Sell (TP), Expected PnL = (Sell - Buy).
+                        pnl = abs(opposite['price'] - filled_order['price']) * filled_order['amount']
 
-                    # Update the BUY trade as filled
-                    self.db.log_trade({
+                    trade_data = {
                         'symbol': symbol,
                         'side': 'LONG',
                         'entry_price': filled_order['price'],
@@ -352,9 +366,17 @@ class GridTradingBot:
                             'grid_level': order_data['level'],
                             'grid_cycle_id': order_data['grid_cycle_id'],
                             'sell_order_id': new_order['id'],
-                            'expected_profit': profit
+                            'expected_profit': pnl
                         }
-                    })
+                    }
+
+                    # Try to update existing cycle first
+                    if not self.db.update_trade_by_cycle(order_data['grid_cycle_id'], trade_data):
+                        # Fallback to insert if not found
+                        self.db.log_trade(trade_data)
+
+                except Exception as e:
+                    logging.error(f"Failed to log trade update to DB: {e}")
                 except Exception as e:
                     logging.error(f"Failed to log trade update to DB: {e}")
 
