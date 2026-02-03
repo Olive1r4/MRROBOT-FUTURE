@@ -46,9 +46,13 @@ class GridStrategy:
 
         range_high = recent['high'].max()
         range_low = recent['low'].min()
-        mid_price = (range_high + range_low) / 2
 
-        logging.info(f"[GRID] Range calculated: Low=${range_low:.4f} | High=${range_high:.4f} | Mid=${mid_price:.4f}")
+        # Use current price (last close) as mid_price to center the grid effectively
+        # This prevents the 'rebalance loop' where a lagging MA-based mid_price
+        # causes all buy orders to be above current price (and thus ignored).
+        mid_price = float(recent['close'].iloc[-1])
+
+        logging.info(f"[GRID] Range calculated: Low=${range_low:.4f} | High=${range_high:.4f} | Mid (Current)=${mid_price:.4f}")
 
         return range_low, range_high, mid_price
 

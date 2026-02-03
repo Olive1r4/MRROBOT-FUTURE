@@ -182,17 +182,37 @@ class GridTradingBot:
             # For now, we'll create BUY orders below mid and SELL orders above
             # In a full implementation, we'd need inventory management
 
+            # Check for existing open positions (filled Buy orders)
+            open_trades_count = self.db.get_open_trades_count(symbol)
+            allowed_new_buys = max(0, int(Config.GRID_LEVELS) - open_trades_count)
+
+            logging.info(f"[GRID SETUP] {symbol}: existing open positions={open_trades_count}, allowed new buys={allowed_new_buys}")
+
+            if allowed_new_buys == 0:
+                 logging.warning(f"[GRID SETUP] {symbol} has reached max positions ({open_trades_count}/{Config.GRID_LEVELS}). No new BUY orders will be placed.")
+
             current_price = await self.exchange.get_current_price(symbol)
 
+            created_buys = 0
             for level in grid_levels:
+                # Stop if we reached the limit of allowed new buys
+                if created_buys >= allowed_new_buys:
+                    break
+
                 # Only create BUY orders for now (we don't have inventory to sell)
-                if level['side'] == 'BUY' and level['price'] < current_price:
-                    order = await self.exchange.create_limit_order(
-                        symbol=symbol,
-                        side='BUY',
-                        amount=level['size'],
-                        price=level['price']
-                    )
+                if level['side'] == 'BUY':
+                    if level['price'] < current_price:
+                        order = await self.exchange.create_limit_order(
+                            symbol=symbol,
+                            side='BUY',
+                            amount=level['size'],
+                            price=level['price']
+                        )
+                        if order:
+                            created_buys += 1
+                    else:
+                        logging.warning(f"[GRID SETUP] Skipping BUY level ${level['price']:.4f} > Current ${current_price:.4f} (Safety)")
+                        order = None
 
                     if order:
                         grid_cycle_id = str(uuid.uuid4())

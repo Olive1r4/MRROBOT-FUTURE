@@ -75,6 +75,24 @@ class Database:
             logging.error(f"Error cancelling pending trades for {symbol}: {e}")
             return None
 
+    def get_open_trades_count(self, symbol: str) -> int:
+        """Count number of OPEN trades for a symbol."""
+        try:
+            db = self.get_client()
+            response = db.table('trades_mrrobot')\
+                .select('id', count='exact')\
+                .eq('symbol', symbol)\
+                .eq('status', 'OPEN')\
+                .execute()
+
+            # response.count returns the count if 'exact' is specified
+            if response.count is not None:
+                return response.count
+            return len(response.data) if response.data else 0
+        except Exception as e:
+            logging.error(f"Error counting open trades for {symbol}: {e}")
+            return 0
+
     def log_wallet(self, wallet_data: dict):
         try:
             db = self.get_client()
