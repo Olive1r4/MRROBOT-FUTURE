@@ -263,7 +263,7 @@ class Exchange:
                 return orders
             except Exception as e:
                 logging.error(f"Error fetching open orders: {e}")
-                return []
+                return None
         else:
             # Paper mode - return empty for now
             # In a full implementation, we'd track paper orders in memory

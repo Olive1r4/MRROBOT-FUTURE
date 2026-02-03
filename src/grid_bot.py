@@ -260,6 +260,10 @@ class GridTradingBot:
             if Config.TRADING_MODE == 'LIVE':
                 open_orders = await self.exchange.get_open_orders(symbol)
 
+                if open_orders is None:
+                    logging.warning(f"[GRID] Failed to fetch open orders for {symbol}. Skipping cycle.")
+                    return
+
                 # Compare with pending orders to find filled ones
                 open_order_ids = {order['id'] for order in open_orders}
 
