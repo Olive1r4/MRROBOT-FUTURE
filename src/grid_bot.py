@@ -138,7 +138,7 @@ class GridTradingBot:
             logging.info(f"[GRID SETUP] Initializing grid for {symbol}")
 
             # Fetch candles for range calculation
-            candles = await self.exchange.get_candles(symbol, limit=24)  # 6h of 15m candles (was 24h)
+            candles = await self.exchange.get_candles(symbol, limit=96)  # 24h of 15m candles (96 * 15m = 24h)
             if not candles:
                 logging.error(f"[GRID SETUP] Failed to fetch candles for {symbol}")
                 return
@@ -248,8 +248,15 @@ class GridTradingBot:
                 f"📈 Levels: {len(grid_levels)}\n"
                 f"💰 Capital/Level: ${capital_per_level:.2f}"
             )
-            await self.send_notification(msg)
-            logging.info(f"[GRID SETUP] Grid created for {symbol} with {len(grid_levels)} levels")
+
+            # Only notify if we actually created new buy orders or have pending orders
+            # This prevents spam when the bot is just "monitoring" full positions
+            if created_buys > 0:
+                await self.send_notification(msg)
+                logging.info(f"[GRID SETUP] Grid created for {symbol} with {created_buys} new BUY orders")
+            else:
+                # Log internally but don't annoy the user
+                logging.info(f"[GRID SETUP] Grid updated for {symbol} (Monitoring Only - {open_trades_count}/{Config.GRID_LEVELS} positions filled)")
 
         except Exception as e:
             logging.error(f"[GRID SETUP] Error setting up grid for {symbol}: {e}")
