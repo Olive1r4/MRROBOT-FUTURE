@@ -88,6 +88,17 @@ class GridTradingBot:
                     await asyncio.sleep(300)
                     continue
 
+                # 0.5 Update Wallet Balance (Live monitoring)
+                try:
+                    balance_info = await self.exchange.get_balance()
+                    self.db.log_wallet({
+                        'total_balance': float(balance_info['total']),
+                        'available_balance': float(balance_info['free']),
+                        'mode': Config.TRADING_MODE
+                    })
+                except Exception as e:
+                    logging.error(f"Error updating wallet balance: {e}")
+
                 # 1. Get active markets
                 active_markets = self.db.get_active_markets()
                 if not active_markets:
