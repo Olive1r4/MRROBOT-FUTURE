@@ -93,6 +93,20 @@ class Database:
             logging.error(f"Error counting open trades for {symbol}: {e}")
             return 0
 
+    def get_open_trades(self, symbol: str):
+        """Fetch all OPEN trades for a symbol."""
+        try:
+            db = self.get_client()
+            response = db.table('trades_mrrobot')\
+                .select('*')\
+                .eq('symbol', symbol)\
+                .eq('status', 'OPEN')\
+                .execute()
+            return response.data if response.data else []
+        except Exception as e:
+            logging.error(f"Error fetching open trades for {symbol}: {e}")
+            return []
+
     def log_wallet(self, wallet_data: dict):
         try:
             db = self.get_client()

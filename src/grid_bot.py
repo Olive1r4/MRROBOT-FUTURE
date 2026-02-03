@@ -153,6 +153,32 @@ class GridTradingBot:
             # 2. Cancel on Exchange - ONLY BUY ORDERS (Preserve SELLS/TPs)
             await self.exchange.cancel_all_orders(symbol, side='BUY')
 
+            # 3. Restore existing OPEN trades (active Sell Orders) to internal state
+            # This ensures we track TPs even after restart
+            existing_open_trades = self.db.get_open_trades(symbol)
+            restored_count = 0
+            for trade in existing_open_trades:
+                strategy_data = trade.get('strategy_data', {})
+                sell_order_id = strategy_data.get('sell_order_id')
+
+                if sell_order_id:
+                     # Fetch order details to reconstruct pending_order object
+                     order = await self.exchange.get_order(str(sell_order_id), symbol)
+
+                     if order:
+                         # Add to tracking
+                         self.pending_orders[str(sell_order_id)] = {
+                             'symbol': symbol,
+                             'level': strategy_data.get('grid_level'),
+                             'order': order,
+                             'grid_cycle_id': strategy_data.get('grid_cycle_id'),
+                             'entry_price': float(trade['entry_price'])
+                         }
+                         restored_count += 1
+
+            if restored_count > 0:
+                 logging.info(f"[GRID SETUP] Restored {restored_count} active Sell orders for {symbol}")
+
             # Calculate range
             range_low, range_high, mid_price = self.grid_strategy.calculate_grid_range(candles)
 

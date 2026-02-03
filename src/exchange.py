@@ -247,6 +247,19 @@ class Exchange:
             logging.info(f"[PAPER CANCEL] Order {order_id} for {symbol}")
             return True
 
+    async def get_order(self, order_id: str, symbol: str):
+        """
+        Fetch a specific order by ID
+        """
+        if self.mode == 'LIVE':
+            try:
+                order = await self.client.fetch_order(order_id, symbol)
+                return order
+            except Exception as e:
+                logging.error(f"Error fetching order {order_id}: {e}")
+                return None
+        return None
+
     async def get_open_orders(self, symbol: str = None):
         """
         Get all open orders
