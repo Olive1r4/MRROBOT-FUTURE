@@ -19,6 +19,10 @@ jobs:
           script: |
             cd ~/mrrobot-trade
             git pull origin main
-            # Only use up -d --build. Docker Compose handles recreation if needed.
-            # Removing prune/stop/rm to allow CACHING and speed up deploys.
+
+            # Stop and remove ONLY the bot container to prevent name conflicts
+            docker stop mrrobot_trade_bot || true
+            docker rm mrrobot_trade_bot || true
+
+            # Start up - Build cache is preserved because we didn't run system prune
             docker compose up -d --build --remove-orphans
