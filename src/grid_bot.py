@@ -65,11 +65,11 @@ class GridTradingBot:
             return True  # Filter disabled, always allow
 
         try:
-            # Fetch BTC candles for the configured timeframe
+            # Fetch BTC candles for the configured timeframe (e.g., 1h)
             btc_symbol = 'BTC/USDT'
             limit = 2  # Current + 1 previous candle
 
-            candles = await self.exchange.get_candles(btc_symbol, limit=limit)
+            candles = await self.exchange.get_candles(btc_symbol, limit=limit, timeframe=Config.BTC_FILTER_TIMEFRAME)
             if not candles or len(candles) < 2:
                 logging.warning("[BTC FILTER] Could not fetch BTC data, allowing trades (fail-safe)")
                 return True

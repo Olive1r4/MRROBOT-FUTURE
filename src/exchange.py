@@ -46,10 +46,11 @@ class Exchange:
     async def close(self):
         await self.client.close()
 
-    async def get_candles(self, symbol, limit=300):
-        """ALWAYS fetch real market data."""
+    async def get_candles(self, symbol, limit=300, timeframe=None):
+        """ALWAYS fetch real market data. Uses bot's default timeframe unless specified."""
         try:
-            ohlcv = await self.client.fetch_ohlcv(symbol, self.timeframe, limit=limit)
+            tf = timeframe if timeframe else self.timeframe
+            ohlcv = await self.client.fetch_ohlcv(symbol, tf, limit=limit)
             return ohlcv
         except Exception as e:
             logging.error(f"Error fetching candles for {symbol}: {e}")
