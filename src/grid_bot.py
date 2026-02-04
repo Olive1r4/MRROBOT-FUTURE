@@ -143,6 +143,16 @@ class GridTradingBot:
                 logging.error(f"[GRID SETUP] Failed to fetch candles for {symbol}")
                 return
 
+            # Set leverage for this symbol (Binance stores leverage per-pair)
+            # This ensures all new orders use the configured leverage
+            try:
+                leverage = int(Config.LEVERAGE) if hasattr(Config, 'LEVERAGE') else 5
+                await self.exchange.set_leverage(leverage, symbol)
+                logging.info(f"[GRID SETUP] Set leverage to {leverage}x for {symbol}")
+            except Exception as e:
+                logging.warning(f"[GRID SETUP] Could not set leverage for {symbol}: {e} (continuing anyway)")
+
+
             # Cancel existing orders to start fresh (avoids duplication and margin issues)
             # This ensures we sync with the current correct grid parameters
             logging.info(f"[GRID SETUP] Canceling existing orders for {symbol} to align with new grid")
