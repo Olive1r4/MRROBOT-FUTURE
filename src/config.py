@@ -35,6 +35,11 @@ class Config:
     STOP_LOSS_PERCENT = os.getenv('STOP_LOSS_PERCENT', '0.02')  # 2%
     REBALANCE_THRESHOLD = os.getenv('REBALANCE_THRESHOLD', '0.10')  # 10%
 
+    # BTC Trend Filter (Safety)
+    BTC_FILTER_ENABLED = os.getenv('BTC_FILTER_ENABLED', 'false').lower() == 'true'
+    BTC_FILTER_THRESHOLD = float(os.getenv('BTC_FILTER_THRESHOLD', '-0.03'))  # -3%
+    BTC_FILTER_TIMEFRAME = os.getenv('BTC_FILTER_TIMEFRAME', '1h')
+
     @staticmethod
     def validate():
         if Config.TRADING_MODE == 'LIVE':

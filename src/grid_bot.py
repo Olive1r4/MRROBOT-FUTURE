@@ -56,6 +56,53 @@ class GridTradingBot:
             except TelegramError as e:
                 logging.error(f"Telegram Error: {e}")
 
+    async def check_btc_trend(self) -> bool:
+        """
+        Check if BTC is in strong downtrend (safety filter)
+        Returns False if BTC is dropping too fast (block new buys)
+        """
+        if not Config.BTC_FILTER_ENABLED:
+            return True  # Filter disabled, always allow
+
+        try:
+            # Fetch BTC candles for the configured timeframe
+            btc_symbol = 'BTC/USDT'
+            limit = 2  # Current + 1 previous candle
+
+            candles = await self.exchange.get_candles(btc_symbol, limit=limit)
+            if not candles or len(candles) < 2:
+                logging.warning("[BTC FILTER] Could not fetch BTC data, allowing trades (fail-safe)")
+                return True
+
+            # Calculate price change
+            previous_close = candles[-2][4]  # Close of previous candle
+            current_close = candles[-1][4]   # Close of current candle
+
+            price_change_pct = ((current_close - previous_close) / previous_close)
+
+            # Check if drop exceeds threshold
+            if price_change_pct < Config.BTC_FILTER_THRESHOLD:
+                logging.warning(
+                    f"🚨 [BTC FILTER] BTC dropped {price_change_pct*100:.2f}% "
+                    f"(threshold: {Config.BTC_FILTER_THRESHOLD*100:.2f}%). "
+                    f"BLOCKING new BUY orders for safety."
+                )
+                await self.send_notification(
+                    f"🛡️ **BTC Crash Protection Activated**\n\n"
+                    f"BTC: {price_change_pct*100:.2f}% in {Config.BTC_FILTER_TIMEFRAME}\n"
+                    f"Status: New BUY orders BLOCKED"
+                )
+                return False
+
+            # All good
+            logging.info(f"[BTC FILTER] BTC trend OK ({price_change_pct*100:+.2f}%)")
+            return True
+
+        except Exception as e:
+            logging.error(f"[BTC FILTER] Error checking BTC trend: {e}")
+            return True  # Fail-safe: allow trading if check fails
+
+
     async def run(self):
         # Initial Wallet Check
         balance_info = await self.exchange.get_balance()
@@ -226,6 +273,15 @@ class GridTradingBot:
 
             if allowed_new_buys == 0:
                  logging.warning(f"[GRID SETUP] {symbol} has reached max positions ({open_trades_count}/{Config.GRID_LEVELS}). No new BUY orders will be placed.")
+
+            # BTC Crash Protection: Don't create new buys if BTC is crashing
+            if allowed_new_buys > 0:
+                btc_ok = await self.check_btc_trend()
+                if not btc_ok:
+                    logging.warning(f"[GRID SETUP] Skipping new BUY orders for {symbol} due to BTC crash protection")
+                    # Update grid as monitoring only
+                    logging.info(f"[GRID SETUP] Grid updated for {symbol} (Monitoring Only - BTC crash protection active)")
+                    return
 
             current_price = await self.exchange.get_current_price(symbol)
 
