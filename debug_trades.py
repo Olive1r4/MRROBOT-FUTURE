@@ -1,25 +1,28 @@
+
+import os
 import asyncio
-from src.database import Database
-from src.config import Config
+from dotenv import load_dotenv
+from supabase import create_client
 
-async def check_open_trades():
-    db = Database()
-    client = db.get_client()
+load_dotenv()
 
-    print(f"Checking DB: {Config.SUPABASE_URL}")
-    print(f"Mode: {Config.TRADING_MODE}")
+SUPABASE_URL = os.getenv('SUPABASE_URL')
+SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
-    # 1. Check ALL OPEN trades regardless of mode
-    res = client.table('trades').select('*').eq('status', 'OPEN').execute()
-    print(f"\n--- ALL OPEN TRADES IN DB ({len(res.data)}) ---")
-    for t in res.data:
-        print(f"ID: {t['id']} | Symbol: {t['symbol']} | Side: {t['side']} | Mode: {t['mode']} | Entry: {t['entry_time']}")
+async def main():
+    db = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    # 2. Check specifically for LIVE OPEN trades (what the bot sees)
-    res_live = client.table('trades').select('*').eq('status', 'OPEN').eq('mode', Config.TRADING_MODE).execute()
-    print(f"\n--- TRADES VISIBLE TO BOT (Mode={Config.TRADING_MODE}) ({len(res_live.data)}) ---")
-    for t in res_live.data:
-        print(f"ID: {t['id']} | Symbol: {t['symbol']}")
+    response = db.table('trades_mrrobot').select('*').eq('status', 'OPEN').execute()
+    trades = response.data
+
+    print(f"Found {len(trades)} OPEN trades:")
+    for t in trades:
+        symbol = t.get('symbol')
+        entry = float(t.get('entry_price'))
+        current_pnl = t.get('pnl') # Likely None until closed
+        strategy_data = t.get('strategy_data', {})
+        print(f"Symbol: {symbol} | Entry: {entry} | ID: {t.get('id')}")
+        print(f"  Strategy Data: {strategy_data}")
 
 if __name__ == "__main__":
-    asyncio.run(check_open_trades())
+    asyncio.run(main())
