@@ -251,7 +251,11 @@ class GridTradingBot:
                     if symbol not in self.active_grids:
                         # Check if manual stop_buy is enabled
                         if stop_buy:
-                            logging.info(f"[STOP BUY] {symbol} has stop_buy=true. Skipping new grid setup, monitoring sells only.")
+                            # Count remaining sells
+                            symbol_orders = [o for o in self.pending_orders.values() if o['symbol'] == symbol]
+                            active_sells = len([o for o in symbol_orders if o['order']['side'].lower() == 'sell'])
+
+                            logging.info(f"[STOP BUY] {symbol} (stop_buy=true). Monitoring {active_sells} existing sells. No new grids.")
                             # Continue to next symbol (won't create new buy orders)
                             continue
                         # Setup new grid (normal flow)
@@ -465,7 +469,11 @@ class GridTradingBot:
             # Check if stop_buy is enabled for this symbol
             stop_buy = market_settings.get('stop_buy', False)
             if stop_buy:
-                logging.info(f"[STOP BUY] {symbol} has stop_buy=true. Canceling BUY orders, monitoring sells only.")
+                # Count remaining sells
+                symbol_orders = [o for o in self.pending_orders.values() if o['symbol'] == symbol]
+                active_sells = len([o for o in symbol_orders if o['order']['side'].lower() == 'sell'])
+
+                logging.info(f"[STOP BUY] {symbol} (stop_buy=true). Monitoring {active_sells} existing sells. No new buys.")
 
                 # 1. Cancel BUY orders on exchange
                 await self.exchange.cancel_all_orders(symbol, side='BUY')
