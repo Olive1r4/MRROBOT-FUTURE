@@ -283,6 +283,9 @@ class GridTradingBot:
         try:
             logging.info(f"[GRID SETUP] Initializing grid for {symbol}")
 
+            # 0. Safety First: Set ISOLATED Margin
+            await self.exchange.set_margin_type(symbol, 'ISOLATED')
+
             # Fetch candles for range calculation
             candles = await self.exchange.get_candles(symbol, limit=96)  # 24h of 15m candles (96 * 15m = 24h)
             if not candles:

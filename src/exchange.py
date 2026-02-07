@@ -147,6 +147,26 @@ class Exchange:
             }
             return fake_order
 
+    async def set_margin_type(self, symbol: str, margin_type: str = 'ISOLATED'):
+        """
+        Set margin type for a symbol (ISOLATED or CROSSED)
+        """
+        if self.mode != 'LIVE':
+            return
+
+        try:
+            # Check current mode first to avoid API errors if already set
+            # But CCXT/Binance usually handles this or throws innocuous error "No need to change"
+            # trying to set directly
+            await self.client.set_margin_mode(margin_type.upper(), symbol)
+            logging.info(f"Set margin type to {margin_type} for {symbol}")
+        except Exception as e:
+            # Usually error means it's already set or position exists
+            if "No need to change" in str(e):
+                pass
+            else:
+                logging.warning(f"Could not set margin type for {symbol}: {e}")
+
     async def update_paper_balance(self, pnl):
         """Update internal paper balance after a trade close."""
         if self.mode == 'PAPER':
