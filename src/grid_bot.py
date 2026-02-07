@@ -462,6 +462,16 @@ class GridTradingBot:
         Monitor grid orders and create opposite orders when filled
         """
         try:
+            # Check if stop_buy is enabled for this symbol
+            stop_buy = market_settings.get('stop_buy', False)
+            if stop_buy:
+                logging.info(f"[STOP BUY] {symbol} has stop_buy=true. Monitoring existing sells only, no new grids.")
+                # Remove from active_grids to prevent new buy orders
+                # But keep monitoring any existing sell orders through pending_orders
+                if symbol in self.active_grids:
+                    del self.active_grids[symbol]
+                return  # Exit early, only existing sells will be monitored via pending_orders
+
             grid_data = self.active_grids[symbol]
             current_price = await self.exchange.get_current_price(symbol)
 
