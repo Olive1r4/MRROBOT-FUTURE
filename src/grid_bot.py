@@ -245,13 +245,19 @@ class GridTradingBot:
                 # 2. For each market, manage grid
                 for market in active_markets:
                     symbol = market['symbol']
+                    stop_buy = market.get('stop_buy', False)
 
                     # Check if grid exists for this symbol
                     if symbol not in self.active_grids:
-                        # Setup new grid
+                        # Check if manual stop_buy is enabled
+                        if stop_buy:
+                            logging.info(f"[STOP BUY] {symbol} has stop_buy=true. Skipping new grid setup, monitoring sells only.")
+                            # Continue to next symbol (won't create new buy orders)
+                            continue
+                        # Setup new grid (normal flow)
                         await self.setup_grid(symbol, market)
                     else:
-                        # Monitor existing grid
+                        # Monitor existing grid (sells continue working)
                         await self.monitor_grid(symbol, market)
 
                     # Small delay between symbols
